@@ -27,37 +27,87 @@ export default function Dashboard() {
   const [topItemsLimit, setTopItemsLimit] = useState(5);
   const [recentOrdersLimit, setRecentOrdersLimit] = useState(5);
 
+  // State to track last update time
+  const [lastUpdated, setLastUpdated] = useState(null);
+  
+  // Function to format timestamps
+  const formatTimeAgo = (date) => {
+    if (!date) return 'Just now';
+    const seconds = Math.floor((new Date() - new Date(date)) / 1000);
+    if (seconds < 60) return `${seconds} seconds ago`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+    const hours = Math.floor(minutes / 60);
+    return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  };
+
+  // Real-time data fetching
   useEffect(() => {
-    // Only load data if user is authenticated
     if (!user?.token) {
       setLoading(false);
       return;
     }
-    loadDashboardData();
-    const interval = setInterval(loadDashboardData, 30000); // Refresh every 30s
-    return () => clearInterval(interval);
+
+    let isMounted = true;
+    
+    const fetchData = async () => {
+      try {
+        const [statsRes, chartRes] = await Promise.all([
+          api.get("/admin/dashboard/stats"),
+          api.get("/admin/dashboard/sales-chart"),
+        ]);
+        
+        if (isMounted) {
+          setStats(statsRes.data);
+          setSalesChart(chartRes.data);
+          setLastUpdated(new Date());
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error("Failed to load dashboard data", err);
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    // Initial fetch
+    fetchData();
+
+    // Set up polling every 10 seconds
+    const interval = setInterval(fetchData, 10000);
+    
+    // Cleanup
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, [user]);
 
-  const loadDashboardData = async () => {
-    try {
-      const [statsRes, chartRes, breakdownRes, itemsRes, ordersRes] = await Promise.all([
-        api.get("/admin/dashboard/stats"),
-        api.get("/admin/dashboard/sales-chart"),
-        api.get("/admin/dashboard/order-breakdown"),
-        api.get("/admin/dashboard/top-items"),
-        api.get("/admin/dashboard/recent-orders"),
-      ]);
-      setStats(statsRes.data);
-      setSalesChart(chartRes.data);
-      setOrderBreakdown(breakdownRes.data);
-      setTopItems(itemsRes.data);
-      setRecentOrders(ordersRes.data);
-    } catch (err) {
-      console.error("Failed to load dashboard data", err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Load additional dashboard data (non-critical)
+  useEffect(() => {
+    if (!user?.token) return;
+    
+    const loadAdditionalData = async () => {
+      try {
+        const [breakdownRes, itemsRes, ordersRes] = await Promise.all([
+          api.get("/admin/dashboard/order-breakdown"),
+          api.get("/admin/dashboard/top-items"),
+          api.get("/admin/dashboard/recent-orders"),
+        ]);
+        
+        setOrderBreakdown(breakdownRes.data);
+        setTopItems(itemsRes.data);
+        setRecentOrders(ordersRes.data);
+      } catch (err) {
+        console.error("Failed to load additional dashboard data", err);
+      }
+    };
+    
+    loadAdditionalData();
+    
+    // Refresh every 30 seconds
+    const interval = setInterval(loadAdditionalData, 30000);
+    return () => clearInterval(interval);
+  }, [user]);
 
   // Custom tooltip component
   const CustomTooltip = ({ active, payload, label }) => {
@@ -135,26 +185,62 @@ export default function Dashboard() {
 
   // Generate all days of current month for the chart
   const getDaysInMonth = () => {
-    const date = new Date();
-    const year = date.getFullYear();
-    const month = date.getMonth();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    
-    return Array.from({ length: daysInMonth }, (_, i) => {
-      const day = i + 1;
-      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      const existingData = salesChart.find(d => d.day === dateStr);
-      return {
-        day: dateStr,
-        total: existingData ? existingData.total : 0,
-        date: new Date(year, month, day)
-      };
-    });
+    try {
+      const date = new Date();
+      const year = date.getFullYear();
+      const month = date.getMonth();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      
+      // If no sales data yet, return empty data structure
+      if (!Array.isArray(salesChart) || salesChart.length === 0) {
+        return Array.from({ length: daysInMonth }, (_, i) => ({
+          day: `${year}-${String(month + 1).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`,
+          total: 0,
+          date: new Date(year, month, i + 1)
+        }));
+      }
+      
+      // Process sales data
+      const chartData = Array.from({ length: daysInMonth }, (_, i) => {
+        const day = i + 1;
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        
+        // Find matching data point
+        const existingData = salesChart.find(d => {
+          if (!d || !d.day) return false;
+          const dayStr = d.day instanceof Date ? d.day.toISOString().split('T')[0] : d.day.split('T')[0];
+          return dayStr === dateStr;
+        });
+        
+        return {
+          day: dateStr,
+          total: existingData ? parseFloat(existingData.total) || 0 : 0,
+          date: new Date(year, month, day)
+        };
+      });
+      
+      return chartData;
+    } catch (error) {
+      console.error('Error generating chart data:', error);
+      return [];
+    }
   };
 
+  // Generate chart data
   const monthlyChartData = getDaysInMonth();
+  
+  // Ensure we have valid data for Y-axis
   const yAxisTicks = getYAxisTicks();
   const maxChartValue = yAxisTicks.length > 0 ? Math.max(...yAxisTicks) : 5000;
+  
+  // Debug: Log the final data being passed to the chart
+  console.log('Final Chart Data:', {
+    monthlyChartData,
+    yAxisTicks,
+    maxChartValue,
+    hasData: monthlyChartData.length > 0,
+    firstItem: monthlyChartData[0]
+  });
 
   if (loading) {
     return (
@@ -271,7 +357,14 @@ export default function Dashboard() {
           <div className="lg:col-span-2 bg-white rounded-xl shadow-lg p-5 border border-gray-100">
             <div className="flex flex-col md:flex-row md:items-center justify-between mb-5">
               <div>
-                <h2 className="text-xl font-bold text-gray-900">Monthly Sales</h2>
+                <div className="flex items-center space-x-2">
+                  <h2 className="text-xl font-bold text-gray-900">Monthly Sales</h2>
+                  {lastUpdated && (
+                    <span className="text-xs text-gray-400">
+                      Updated {formatTimeAgo(lastUpdated)}
+                    </span>
+                  )}
+                </div>
                 <p className="text-sm text-gray-500 mt-1">
                   {new Date().toLocaleDateString('en-US', { 
                     month: 'long', 
@@ -288,12 +381,18 @@ export default function Dashboard() {
             </div>
             
             <div className="h-80">
-              {monthlyChartData.length === 0 ? (
-                <div className="w-full text-center text-gray-400 py-12">
+              {!monthlyChartData || monthlyChartData.length === 0 || !salesChart || salesChart.length === 0 ? (
+                <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 py-12">
                   <svg className="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                   </svg>
-                  <div className="text-sm">No sales data available for this month</div>
+                  <div className="text-sm mb-2">No sales data available for this month</div>
+                  <button 
+                    onClick={loadDashboardData}
+                    className="mt-2 px-3 py-1 text-xs bg-blue-50 text-blue-600 rounded-md hover:bg-blue-100 transition-colors"
+                  >
+                    Refresh Data
+                  </button>
                 </div>
               ) : (
                 <div className="w-full h-full">
