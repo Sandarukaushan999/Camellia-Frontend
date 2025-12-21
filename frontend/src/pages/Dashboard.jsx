@@ -6,10 +6,13 @@ import {
   ResponsiveContainer,
   LineChart,
   Line,
+  Area,
   XAxis,
   YAxis,
   Tooltip,
   CartesianGrid,
+  ReferenceLine,
+  Legend
 } from "recharts";
 
 export default function Dashboard() {
@@ -21,6 +24,8 @@ export default function Dashboard() {
   const [topItems, setTopItems] = useState([]);
   const [recentOrders, setRecentOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [topItemsLimit, setTopItemsLimit] = useState(5);
+  const [recentOrdersLimit, setRecentOrdersLimit] = useState(5);
 
   useEffect(() => {
     // Only load data if user is authenticated
@@ -54,6 +59,27 @@ export default function Dashboard() {
     }
   };
 
+  // Custom tooltip component
+  const CustomTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="bg-white p-3 rounded-lg shadow-lg border border-gray-200">
+          <p className="font-semibold text-gray-800">
+            {new Date(label).toLocaleDateString('en-US', { 
+              weekday: 'long', 
+              month: 'short', 
+              day: 'numeric' 
+            })}
+          </p>
+          <p className="text-blue-600 font-medium">
+            {`Rs. ${parseFloat(payload[0].value).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          </p>
+        </div>
+      );
+    }
+    return null;
+  };
+
   const formatCurrency = (amount) => `Rs. ${parseFloat(amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   const formatTime = (dateString) => {
@@ -61,15 +87,74 @@ export default function Dashboard() {
     return date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
   };
 
-  const getMaxChartValue = () => {
-    if (salesChart.length === 0) return 100;
-    return Math.max(...salesChart.map((d) => d.total), 100);
+  const getYAxisTicks = () => {
+    if (salesChart.length === 0) return [0, 1000, 2000, 3000];
+    
+    const maxValue = Math.max(...salesChart.map((d) => d.total), 100);
+    // Round up to the nearest 1000 and add 2000 for better visualization
+    const maxTick = Math.ceil((maxValue + 2000) / 1000) * 1000;
+    
+    // Generate ticks from 0 to maxTick with 1000 interval
+    const ticks = [];
+    for (let i = 0; i <= maxTick; i += 1000) {
+      ticks.push(i);
+    }
+    
+    return ticks;
+  };
+
+  // Custom dot for data points
+  const CustomDot = (props) => {
+    const { cx, cy, stroke, payload, value } = props;
+    return (
+      <circle
+        cx={cx}
+        cy={cy}
+        r={4}
+        stroke="#3b82f6"
+        strokeWidth={2}
+        fill="white"
+        className="transition-all duration-200 hover:r-6"
+      />
+    );
+  };
+
+  // Format Y-axis values
+  const formatYAxis = (value) => {
+    if (value === 0) return '0';
+    if (value >= 1000) return `${value / 1000}k`;
+    return value;
   };
 
   const latestChartPoint = salesChart.length > 0 ? salesChart[salesChart.length - 1] : null;
 
-  const formatChartDate = (day) =>
-    new Date(day).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const formatChartDate = (day) => {
+    const date = new Date(day);
+    return date.toLocaleDateString("en-US", { day: 'numeric' });
+  };
+
+  // Generate all days of current month for the chart
+  const getDaysInMonth = () => {
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    
+    return Array.from({ length: daysInMonth }, (_, i) => {
+      const day = i + 1;
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const existingData = salesChart.find(d => d.day === dateStr);
+      return {
+        day: dateStr,
+        total: existingData ? existingData.total : 0,
+        date: new Date(year, month, day)
+      };
+    });
+  };
+
+  const monthlyChartData = getDaysInMonth();
+  const yAxisTicks = getYAxisTicks();
+  const maxChartValue = yAxisTicks.length > 0 ? Math.max(...yAxisTicks) : 5000;
 
   if (loading) {
     return (
@@ -183,41 +268,117 @@ export default function Dashboard() {
         {/* Sales Chart & Order Breakdown - Side by Side */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Sales Chart - Takes 2 columns */}
-          <div className="lg:col-span-2 bg-white rounded-xl shadow-lg p-4 md:p-5 border border-gray-100">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-gray-900">Daily Sales (Last 7 Days)</h2>
-              <div className="text-xs text-gray-500">Weekly Overview</div>
+          <div className="lg:col-span-2 bg-white rounded-xl shadow-lg p-5 border border-gray-100">
+            <div className="flex flex-col md:flex-row md:items-center justify-between mb-5">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Monthly Sales</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  {new Date().toLocaleDateString('en-US', { 
+                    month: 'long', 
+                    year: 'numeric' 
+                  })}
+                </p>
+              </div>
+              <div className="flex items-center mt-2 md:mt-0">
+                <div className="flex items-center">
+                  <div className="w-3 h-3 rounded-full bg-blue-500 mr-2"></div>
+                  <span className="text-sm text-gray-600">Daily Sales</span>
+                </div>
+              </div>
             </div>
-            <div className="h-56 flex items-end justify-between gap-2">
-              {salesChart.length === 0 ? (
+            
+            <div className="h-80">
+              {monthlyChartData.length === 0 ? (
                 <div className="w-full text-center text-gray-400 py-12">
                   <svg className="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                   </svg>
-                  <div className="text-sm">No sales data available</div>
+                  <div className="text-sm">No sales data available for this month</div>
                 </div>
               ) : (
-                salesChart.map((day, idx) => {
-                  const maxValue = getMaxChartValue();
-                  const height = maxValue > 0 ? (day.total / maxValue) * 100 : 0;
-                  return (
-                    <div key={idx} className="flex-1 flex flex-col items-center group">
-                      <div className="w-full bg-gray-100 rounded-t-md relative h-full flex items-end" style={{ minHeight: "150px" }}>
-                        <div
-                          className="w-full bg-gradient-to-t from-blue-600 to-blue-400 rounded-t-md hover:from-blue-700 hover:to-blue-500 transition-all duration-300 shadow-sm hover:shadow-md"
-                          style={{ height: `${height}%`, minHeight: height > 0 ? "6px" : "0" }}
-                          title={`${new Date(day.day).toLocaleDateString()}: ${formatCurrency(day.total)}`}
+                <div className="w-full h-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={monthlyChartData}
+                      margin={{ top: 10, right: 20, left: 0, bottom: 10 }}
+                    >
+                      <defs>
+                        <linearGradient id="colorUv" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1}/>
+                          <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      
+                      <CartesianGrid 
+                        strokeDasharray="3 3" 
+                        vertical={false} 
+                        stroke="#f0f4f8" 
+                      />
+                      
+                      <XAxis
+                        dataKey="day"
+                        tickFormatter={formatChartDate}
+                        tick={{ fontSize: 12, fill: '#6b7280' }}
+                        tickLine={false}
+                        axisLine={{ stroke: '#e5e7eb' }}
+                        padding={{ left: 10, right: 10 }}
+                      />
+                      
+                      <YAxis
+                        domain={[0, maxChartValue]}
+                        tickFormatter={formatYAxis}
+                        ticks={yAxisTicks}
+                        tick={{ fontSize: 12, fill: '#6b7280' }}
+                        tickLine={false}
+                        axisLine={false}
+                        width={40}
+                      />
+                      
+                      <Tooltip 
+                        content={<CustomTooltip />}
+                        cursor={{ stroke: '#e5e7eb', strokeWidth: 1, strokeDasharray: '3 3' }}
+                      />
+                      
+                      <Line
+                        type="monotone"
+                        dataKey="total"
+                        stroke="#3b82f6"
+                        strokeWidth={2}
+                        dot={<CustomDot />}
+                        activeDot={{ 
+                          r: 6, 
+                          strokeWidth: 2, 
+                          fill: 'white',
+                          stroke: '#2563eb'
+                        }}
+                        name="Sales"
+                      >
+                        <Area 
+                          type="monotone" 
+                          dataKey="total" 
+                          fill="url(#colorUv)" 
+                          strokeWidth={0} 
                         />
-                      </div>
-                      <div className="text-xs font-medium text-gray-600 mt-2 text-center">
-                        {new Date(day.day).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                      </div>
-                      <div className="text-xs font-bold text-gray-900 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {formatCurrency(day.total)}
-                      </div>
-                    </div>
-                  );
-                })
+                      </Line>
+                      
+                      {/* Average line */}
+                      {salesChart.length > 0 && (
+                        <ReferenceLine 
+                          y={salesChart.reduce((a, b) => a + b.total, 0) / salesChart.length} 
+                          stroke="#94a3b8" 
+                          strokeDasharray="3 3"
+                          strokeWidth={1}
+                          label={{
+                            value: 'Avg',
+                            position: 'right',
+                            fill: '#64748b',
+                            fontSize: 12
+                          }}
+                        />
+                      )}
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
               )}
             </div>
           </div>
@@ -280,7 +441,38 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Top Selling Items */}
           <div className="bg-white rounded-xl shadow-lg p-4 md:p-5 border border-gray-100">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">Top Selling Items</h2>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-bold text-gray-900">Top Selling Items</h2>
+              {topItems.length > 5 && (
+                <div className="flex items-center space-x-2">
+                  {topItemsLimit > 5 && (
+                    <button 
+                      onClick={() => setTopItemsLimit(5)}
+                      className="text-xs text-gray-600 hover:text-gray-800 font-medium flex items-center"
+                      title="Collapse"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                      </svg>
+                    </button>
+                  )}
+                  <button 
+                    onClick={() => setTopItemsLimit(prev => prev === 5 ? 10 : prev + 5)}
+                    className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center"
+                  >
+                    {topItemsLimit >= topItems.length ? 'Show Less' : 'View More'}
+                    <svg 
+                      className={`w-4 h-4 ml-1 transition-transform duration-200 ${topItemsLimit >= topItems.length ? 'rotate-180' : ''}`} 
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+            </div>
             {topItems.length === 0 ? (
               <div className="text-gray-400 text-center py-8">
                 <div className="text-sm mb-1">No items sold today</div>
@@ -288,7 +480,7 @@ export default function Dashboard() {
               </div>
             ) : (
               <div className="space-y-2">
-                {topItems.map((item, idx) => (
+                {topItems.slice(0, topItemsLimit).map((item, idx) => (
                   <div
                     key={idx}
                     className="flex items-center justify-between p-3 bg-gradient-to-r from-gray-50 to-white rounded-lg hover:shadow-md transition-all duration-300 border border-gray-100"
@@ -312,13 +504,57 @@ export default function Dashboard() {
                     </div>
                   </div>
                 ))}
+                {topItemsLimit < topItems.length && (
+                  <div className="text-center pt-2">
+                    <button 
+                      onClick={() => setTopItemsLimit(prev => Math.min(prev + 5, topItems.length))}
+                      className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center justify-center w-full py-1 border border-gray-200 rounded hover:bg-gray-50"
+                    >
+                      +{topItems.length - topItemsLimit} more items
+                      <svg className="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
 
           {/* Recent Orders */}
           <div className="bg-white rounded-xl shadow-lg p-4 md:p-5 border border-gray-100">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">Recent Activity</h2>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-bold text-gray-900">Recent Activity</h2>
+              {recentOrders.length > 5 && (
+                <div className="flex items-center space-x-2">
+                  {recentOrdersLimit > 5 && (
+                    <button 
+                      onClick={() => setRecentOrdersLimit(5)}
+                      className="text-xs text-gray-600 hover:text-gray-800 font-medium flex items-center"
+                      title="Collapse"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                      </svg>
+                    </button>
+                  )}
+                  <button 
+                    onClick={() => setRecentOrdersLimit(prev => prev === 5 ? 10 : prev + 5)}
+                    className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center"
+                  >
+                    {recentOrdersLimit >= recentOrders.length ? 'Show Less' : 'View More'}
+                    <svg 
+                      className={`w-4 h-4 ml-1 transition-transform duration-200 ${recentOrdersLimit >= recentOrders.length ? 'rotate-180' : ''}`} 
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+            </div>
             {recentOrders.length === 0 ? (
               <div className="text-gray-400 text-center py-8">
                 <div className="text-sm mb-1">No recent orders</div>
@@ -326,7 +562,7 @@ export default function Dashboard() {
               </div>
             ) : (
               <div className="space-y-2">
-                {recentOrders.map((order) => (
+                {recentOrders.slice(0, recentOrdersLimit).map((order) => (
                   <div
                     key={order.id}
                     className="p-3 bg-gradient-to-r from-gray-50 to-white rounded-lg hover:shadow-md transition-all duration-300 cursor-pointer border border-gray-100 hover:border-blue-200 group"
@@ -346,6 +582,19 @@ export default function Dashboard() {
                     </div>
                   </div>
                 ))}
+                {recentOrdersLimit < recentOrders.length && (
+                  <div className="text-center pt-2">
+                    <button 
+                      onClick={() => setRecentOrdersLimit(prev => Math.min(prev + 5, recentOrders.length))}
+                      className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center justify-center w-full py-1 border border-gray-200 rounded hover:bg-gray-50"
+                    >
+                      +{recentOrders.length - recentOrdersLimit} more activities
+                      <svg className="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
