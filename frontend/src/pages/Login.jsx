@@ -18,7 +18,17 @@ export default function Login() {
       const user = await login(username, password);
       navigate(user.role === "ADMIN" ? "/dashboard" : "/pos");
     } catch (err) {
-      setError(err.response?.data?.message || "Login failed");
+      // Handle different error types
+      if (err.response?.status === 404 || err.code === "ERR_NETWORK") {
+        setError("Backend server is not reachable. Please ensure the API server is running and check your API configuration.");
+      } else if (err.response?.data?.message) {
+        setError(err.response.data.message);
+      } else if (err.message) {
+        setError(err.message);
+      } else {
+        setError("Login failed. Please check your credentials and try again.");
+      }
+      console.error("Login error:", err);
     } finally {
       setLoading(false);
     }
