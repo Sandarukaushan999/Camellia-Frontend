@@ -1,0 +1,124 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  color: #0f172a;
+  background-color: #f8fafc;
+}
+
+body {
+  margin: 0;
+}
+
+/* Global dark theme support */
+body.dark-theme {
+  background-color: #020617; /* very dark slate */
+  color: #f9fafb;
+}
+
+body.dark-theme .bg-white {
+  background-color: #0b1120 !important; /* 90% dark cards */
+}
+
+body.dark-theme .bg-gray-50,
+body.dark-theme .bg-gray-100 {
+  background-color: #020617 !important; /* dark page background */
+}
+
+body.dark-theme .text-gray-900,
+body.dark-theme .text-gray-800,
+body.dark-theme .text-gray-700 {
+  color: #f9fafb !important;
+}
+
+body.dark-theme .text-gray-600,
+body.dark-theme .text-gray-500,
+body.dark-theme .text-gray-400 {
+  color: #d1d5db !important;
+}
+
+/* Buttons: 70% dark with readable text */
+body.dark-theme button,
+body.dark-theme .btn {
+  background-color: #1f2937;
+  color: #f9fafb;
+  border-color: transparent;
+}
+
+body.dark-theme button:hover,
+body.dark-theme .btn:hover {
+  background-color: #111827;
+}
+
+/* Preserve brand/semantic colors but darken slightly */
+body.dark-theme .bg-blue-600 {
+  background-color: #1d4ed8 !important;
+}
+
+body.dark-theme .bg-green-600 {
+  background-color: #16a34a !important;
+}
+
+body.dark-theme .bg-red-600 {
+  background-color: #dc2626 !important;
+}
+
+body.dark-theme .bg-purple-600 {
+  background-color: #7c3aed !important;
+}
+
+/* Legacy styles - now using Tailwind */
+.content {
+  padding: 20px;
+}
+
+.card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.btn {
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+
+.btn.secondary {
+  background: #0f172a;
+}
+
+.input {
+  width: 100%;
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  margin-bottom: 12px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.product {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+  background: white;
+  cursor: pointer;
+}
+
+.cart {
+  border-top: 1px solid #e2e8f0;
+  padding-top: 12px;
+}
+
