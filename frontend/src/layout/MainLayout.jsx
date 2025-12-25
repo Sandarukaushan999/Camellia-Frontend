@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../state/AuthContext.jsx";
 import logo from "../assests/Clogo.jpeg";
@@ -40,6 +40,7 @@ const menuIcons = {
 export default function MainLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [collapsed, setCollapsed] = useState(false);
 
   const links =
     user?.role === "ADMIN"
@@ -56,32 +57,34 @@ export default function MainLayout() {
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Sidebar */}
-      <aside className="w-64 bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col shadow-xl">
+      <aside key={collapsed ? 'collapsed' : 'expanded'} className={`${collapsed ? 'w-32' : 'w-64'} bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col shadow-xl transition-all duration-300 ease-in-out`}>
         {/* Logo/Brand */}
-        <div className="p-6 border-b border-gray-700">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 border-2 border-gray-600 shadow-md">
+        <div className={`${collapsed ? 'p-3' : 'p-6'} border-b border-gray-700 cursor-pointer`} onClick={() => setCollapsed(!collapsed)}>
+          <div className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3'}`}>
+            <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 border-2 border-gray-600 shadow-md cursor-pointer" onClick={() => setCollapsed(!collapsed)}>
               <img 
                 src={logo} 
                 alt="Camellia POS Logo" 
                 className="w-full h-full object-cover"
               />
             </div>
-            <div className="flex-1 min-w-0">
-              <h1 className="text-xl font-bold text-white">Camellia POS</h1>
-              <p className="text-xs text-gray-400">Café & Restaurant</p>
-            </div>
+            {!collapsed && (
+              <div className="flex-1 min-w-0">
+                <h1 className="text-xl font-bold text-white">Camellia POS</h1>
+                <p className="text-xs text-gray-400">Café & Restaurant</p>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Navigation Menu */}
-        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+        <nav className={`${collapsed ? 'flex-1 p-2' : 'flex-1 p-4'} space-y-1 overflow-y-auto`}>
           {links.map((link) => (
             <NavLink
               key={link.to}
               to={link.to}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${
+                `flex items-center ${collapsed ? 'justify-center px-4' : 'gap-3 px-4'} py-3 rounded-lg transition-all duration-200 ${
                   isActive
                     ? "bg-blue-600 text-white shadow-lg shadow-blue-500/50"
                     : "text-gray-300 hover:bg-gray-700 hover:text-white"
@@ -89,24 +92,26 @@ export default function MainLayout() {
               }
             >
               {menuIcons[link.label]}
-              <span className="font-medium">{link.label}</span>
+              {!collapsed && <span className="font-medium">{link.label}</span>}
             </NavLink>
           ))}
         </nav>
 
         {/* User Info & Logout */}
-        <div className="p-4 border-t border-gray-700">
-          <div className="bg-gray-800 rounded-lg p-3 mb-3">
-            <div className="flex items-center gap-3">
+        <div className={`${collapsed ? 'p-2' : 'p-4'} border-t border-gray-700`}>
+          <div className={`${collapsed ? 'bg-gray-800 rounded-lg p-2 mb-2' : 'bg-gray-800 rounded-lg p-3 mb-3'}`}>
+            <div className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3'}`}>
               <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center font-bold">
                 {user?.username?.charAt(0).toUpperCase() || "U"}
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-white truncate">
-                  {user?.username || "User"}
+              {!collapsed && (
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-white truncate">
+                    {user?.username || "User"}
+                  </div>
+                  <div className="text-xs text-gray-400">{user?.role || "Role"}</div>
                 </div>
-                <div className="text-xs text-gray-400">{user?.role || "Role"}</div>
-              </div>
+              )}
             </div>
           </div>
           <button
@@ -114,12 +119,12 @@ export default function MainLayout() {
               logout();
               navigate("/login");
             }}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors shadow-md"
+            className={`w-full flex items-center ${collapsed ? 'justify-center px-4' : 'justify-center gap-2 px-4'} py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors shadow-md`}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
             </svg>
-            Logout
+            {!collapsed && <span>Logout</span>}
           </button>
         </div>
       </aside>
