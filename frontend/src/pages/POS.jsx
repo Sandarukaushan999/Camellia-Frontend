@@ -40,6 +40,7 @@ export default function POS() {
   const [message, setMessage] = useState("");
   const [showReceipt, setShowReceipt] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
+  const [showBillPanel, setShowBillPanel] = useState(false);
   // Per-bill discount
   const [discountType, setDiscountType] = useState("NONE"); // NONE | PERCENT | AMOUNT
   const [discountValue, setDiscountValue] = useState("");
@@ -438,13 +439,13 @@ export default function POS() {
     <div className="h-screen flex flex-col bg-gray-50">
       {/* Header - Order Type Selector */}
       <div className="bg-white border-b border-gray-200 px-4 py-3">
-        <div className="flex items-center gap-3">
-              <div className={`flex gap-2 flex-1 ${systemPrefs.touchMode ? "space-x-2" : ""}`}>
+        <div className="flex items-center justify-between">
+          <div className={`flex gap-2 flex-1 ${systemPrefs.touchMode ? "space-x-2" : ""}`}>
             {["DINE-IN", "TAKEAWAY", "DELIVERY"].map((type) => (
                 <button
                 key={type}
                 onClick={() => setOrderType(type)}
-                  className={`px-4 ${systemPrefs.touchMode ? "py-3" : "py-2"} rounded-lg font-semibold text-sm transition-all ${
+                  className={`px-3 lg:px-4 ${systemPrefs.touchMode ? "py-3" : "py-2"} rounded-lg font-semibold text-sm transition-all ${
                   orderType === type
                     ? "bg-blue-600 text-white shadow-md"
                     : "bg-gray-100 text-gray-700 hover:bg-gray-200"
@@ -454,31 +455,42 @@ export default function POS() {
               </button>
             ))}
           </div>
-          {orderType === "DINE-IN" && (
-            <input
-              type="text"
-              placeholder="Table #"
-              value={tableNumber}
-              onChange={(e) => setTableNumber(e.target.value)}
-              className="w-24 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          )}
-          {orderType === "DELIVERY" && (
-            <input
-              type="text"
-              placeholder="Customer Name"
-              value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
-              className="w-32 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          )}
+          
+          {/* Mobile Bill Panel Toggle */}
+          <button
+            onClick={() => setShowBillPanel(true)}
+            className="lg:hidden ml-4 px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold shadow-md hover:bg-blue-700 transition-colors"
+          >
+            View Bill ({cart.length})
+          </button>
+          
+          <div className="flex items-center gap-3 ml-4">
+            {orderType === "DINE-IN" && (
+              <input
+                type="text"
+                placeholder="Table #"
+                value={tableNumber}
+                onChange={(e) => setTableNumber(e.target.value)}
+                className="w-20 lg:w-24 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            )}
+            {orderType === "DELIVERY" && (
+              <input
+                type="text"
+                placeholder="Customer Name"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                className="w-28 lg:w-32 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            )}
+          </div>
         </div>
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
         {/* Left Side - Product Selection */}
-        <div className="flex-1 flex flex-col bg-white border-r border-gray-200">
+        <div className="flex-1 flex flex-col bg-white lg:border-r border-gray-200">
           {/* Category Bar - Enhanced */}
           <div className="bg-gradient-to-r from-gray-50 to-gray-100 border-b-2 border-gray-300 px-4 py-3 overflow-x-auto shadow-sm">
             <div className="flex gap-3 min-w-max">
@@ -489,14 +501,14 @@ export default function POS() {
                   <button
                     key={cat}
                     onClick={() => setSelectedCategory(cat)}
-                    className={`flex flex-col items-center justify-center gap-1.5 px-5 py-3 rounded-xl font-semibold whitespace-nowrap transition-all duration-200 min-w-[90px] ${
+                    className={`flex flex-col items-center justify-center gap-1.5 px-3 lg:px-5 py-2 lg:py-3 rounded-xl font-semibold whitespace-nowrap transition-all duration-200 min-w-[80px] lg:min-w-[90px] ${
                       isActive
                         ? "bg-blue-600 text-white shadow-lg shadow-blue-500/50 transform scale-105"
                         : "bg-white text-gray-700 hover:bg-blue-50 hover:border-blue-200 border-2 border-transparent"
                     }`}
                   >
-                    <span className="text-3xl leading-none">{icon}</span>
-                    <span className="text-sm leading-tight">{cat}</span>
+                    <span className="text-2xl lg:text-3xl leading-none">{icon}</span>
+                    <span className="text-xs lg:text-sm leading-tight">{cat}</span>
                   </button>
                 );
               })}
@@ -505,23 +517,23 @@ export default function POS() {
 
           {/* Product Grid */}
           <div className="flex-1 overflow-y-auto p-4">
-            <div className={`grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 ${systemPrefs.touchMode ? "gap-4" : ""}`}>
+            <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 lg:gap-3 ${systemPrefs.touchMode ? "gap-4" : ""}`}>
               {filteredProducts.map((product) => (
                 <div
                   key={product.id}
                   onClick={() => addToCart(product)}
                   className={`bg-white border-2 border-gray-200 rounded-lg cursor-pointer hover:border-blue-500 hover:shadow-lg transition-all transform hover:scale-105 active:scale-95 ${
-                    systemPrefs.touchMode ? "p-4" : "p-3"
+                    systemPrefs.touchMode ? "p-3 lg:p-4" : "p-2 lg:p-3"
                   }`}
                 >
                   <div className="text-center mb-2">
-                    <div className="text-3xl mb-2">
+                    <div className="text-2xl lg:text-3xl mb-2">
                       {CATEGORY_ICONS[product.category] || "📦"}
                     </div>
-                    <div className="font-semibold text-sm text-gray-900 mb-1 line-clamp-2">
+                    <div className="font-semibold text-xs lg:text-sm text-gray-900 mb-1 line-clamp-2">
                       {product.name}
                     </div>
-                    <div className="text-base font-bold text-blue-600">
+                    <div className="text-sm lg:text-base font-bold text-blue-600">
                       {formatCurrency(product.price)}
                     </div>
                   </div>
@@ -538,13 +550,36 @@ export default function POS() {
         </div>
 
         {/* Right Side - Bill Panel */}
-        <div className="w-96 bg-white flex flex-col">
+        <div className={`w-full lg:w-96 bg-white flex flex-col lg:border-l border-gray-200 ${
+          showBillPanel ? 'fixed inset-0 z-50 lg:static lg:z-auto' : 'hidden lg:flex'
+        }`}>
+          {/* Mobile Backdrop */}
+          {showBillPanel && (
+            <div 
+              className="lg:hidden fixed inset-0 bg-black bg-opacity-50 -z-10"
+              onClick={() => setShowBillPanel(false)}
+            />
+          )}
+          
           {/* Bill Header */}
           <div className="bg-blue-600 text-white px-4 py-3 border-b border-blue-700">
-            <div className="font-bold text-lg">Current Bill</div>
-            {orderId && (
-              <div className="text-sm opacity-90">Order #{orderId}</div>
-            )}
+            <div className="flex justify-between items-center">
+              <div>
+                <div className="font-bold text-lg">Current Bill</div>
+                {orderId && (
+                  <div className="text-sm opacity-90">Order #{orderId}</div>
+                )}
+              </div>
+              {/* Mobile Close Button */}
+              <button
+                onClick={() => setShowBillPanel(false)}
+                className="lg:hidden p-2 hover:bg-blue-700 rounded-lg transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
           </div>
 
           {/* Bill Preview - Receipt Template */}
