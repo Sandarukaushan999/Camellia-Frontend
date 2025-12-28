@@ -23,6 +23,8 @@ const CATEGORY_ICONS = {
 
 export default function Products() {
   const [products, setProducts] = useState([]);
+  const [inventoryItems, setInventoryItems] = useState([]);
+  const [productIngredients, setProductIngredients] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("ALL");
   const [showModal, setShowModal] = useState(false);
@@ -35,11 +37,22 @@ export default function Products() {
     variants: [{ name: "", price: "" }],
     is_active: true,
   });
+  const [ingredients, setIngredients] = useState([{ inventory_item_id: "", quantity: "" }]);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
     loadProducts();
+    loadInventoryItems();
   }, []);
+
+  const loadInventoryItems = async () => {
+    try {
+      const { data } = await api.get("/inventory/items");
+      setInventoryItems(data.filter(item => item.isActive !== false));
+    } catch (err) {
+      console.error("Failed to load inventory items", err);
+    }
+  };
 
   const markProductsUpdated = () => {
     try {
@@ -82,7 +95,7 @@ export default function Products() {
   }, [products, selectedCategory, searchTerm]);
 
   // Open modal for new product
-  const openAddModal = () => {
+  const openAddModal = async () => {
     setEditingProduct(null);
     setForm({
       name: "",
@@ -92,20 +105,40 @@ export default function Products() {
       variants: [{ name: "", price: "" }],
       is_active: true,
     });
+    setIngredients([{ inventory_item_id: "", quantity: "" }]);
+    await loadInventoryItems();
     setShowModal(true);
   };
 
   // Open modal for editing
-  const openEditModal = (product) => {
+  const openEditModal = async (product) => {
     setEditingProduct(product);
     setForm({
       name: product.name || "",
       category: product.category || "",
-      type: "simple", // For now, we'll support simple only
+      type: "simple",
       price: product.price || "",
       variants: [{ name: "", price: "" }],
       is_active: product.is_active !== false,
     });
+    
+    // Load product ingredients
+    try {
+      await loadInventoryItems();
+      const { data } = await api.get(`/inventory/products/${product.id}/ingredients`);
+      if (data && data.length > 0) {
+        setIngredients(data.map(ing => ({
+          inventory_item_id: ing.inventory_item_id,
+          quantity: ing.quantity
+        })));
+      } else {
+        setIngredients([{ inventory_item_id: "", quantity: "" }]);
+      }
+    } catch (err) {
+      console.error("Failed to load product ingredients", err);
+      setIngredients([{ inventory_item_id: "", quantity: "" }]);
+    }
+    
     setShowModal(true);
   };
 
@@ -132,14 +165,31 @@ export default function Products() {
         is_active: form.is_active,
       };
 
+      let productId;
       if (editingProduct) {
         // Update product
-        await api.put(`/admin/products/${editingProduct.id}`, payload);
+        const res = await api.put(`/admin/products/${editingProduct.id}`, payload);
+        productId = editingProduct.id;
         setMessage("Product updated successfully");
       } else {
         // Create product
-        await api.post("/admin/products", payload);
+        const res = await api.post("/admin/products", payload);
+        productId = res.data.id;
         setMessage("Product created successfully");
+      }
+
+      // Save ingredients
+      const validIngredients = ingredients.filter(
+        ing => ing.inventory_item_id && ing.quantity && parseFloat(ing.quantity) > 0
+      );
+      
+      if (validIngredients.length > 0) {
+        await api.post(`/inventory/products/${productId}/ingredients`, {
+          ingredients: validIngredients.map(ing => ({
+            inventory_item_id: parseInt(ing.inventory_item_id),
+            quantity: parseFloat(ing.quantity)
+          }))
+        });
       }
 
       setShowModal(false);
@@ -149,6 +199,20 @@ export default function Products() {
     } catch (err) {
       setMessage(err.response?.data?.message || "Failed to save product");
     }
+  };
+
+  const addIngredientRow = () => {
+    setIngredients([...ingredients, { inventory_item_id: "", quantity: "" }]);
+  };
+
+  const removeIngredientRow = (index) => {
+    setIngredients(ingredients.filter((_, i) => i !== index));
+  };
+
+  const updateIngredient = (index, field, value) => {
+    const updated = [...ingredients];
+    updated[index] = { ...updated[index], [field]: value };
+    setIngredients(updated);
   };
 
   // Toggle product status
@@ -524,6 +588,82 @@ export default function Products() {
                     <div className="space-y-3">
                       <div className="text-sm text-gray-600 mb-3">Variant pricing (Coming Soon)</div>
                     </div>
+                  )}
+                </div>
+
+                {/* Ingredients */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                    <h3 className="text-lg font-semibold text-gray-900">Ingredients / Recipe</h3>
+                    <button
+                      type="button"
+                      onClick={addIngredientRow}
+                      className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors flex items-center gap-1"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Add Ingredient
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Assign inventory items (ingredients) to this product. Stock will be automatically deducted when orders are placed.
+                  </p>
+                  
+                  <div className="space-y-3">
+                    {ingredients.map((ing, index) => (
+                      <div key={index} className="flex gap-2 items-end">
+                        <div className="flex-1">
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Inventory Item</label>
+                          <select
+                            value={ing.inventory_item_id}
+                            onChange={(e) => updateIngredient(index, "inventory_item_id", e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            <option value="">Select Item</option>
+                            {inventoryItems.map((item) => (
+                              <option key={item.id} value={item.id}>
+                                {item.name} ({item.unit})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="w-32">
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Quantity</label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={ing.quantity}
+                            onChange={(e) => updateIngredient(index, "quantity", e.target.value)}
+                            placeholder="e.g., 100"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                        {ingredients.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeIngredientRow(index)}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Remove"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {ingredients.length === 0 && (
+                    <button
+                      type="button"
+                      onClick={addIngredientRow}
+                      className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-600 hover:border-blue-500 hover:text-blue-600 transition-colors"
+                    >
+                      + Add First Ingredient
+                    </button>
                   )}
                 </div>
 

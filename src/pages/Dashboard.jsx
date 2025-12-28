@@ -388,7 +388,25 @@ export default function Dashboard() {
                   </svg>
                   <div className="text-sm mb-2">No sales data available for this month</div>
                   <button 
-                    onClick={loadDashboardData}
+                    onClick={() => {
+                      setLoading(true);
+                      const fetchData = async () => {
+                        try {
+                          const [statsRes, chartRes] = await Promise.all([
+                            api.get("/admin/dashboard/stats"),
+                            api.get("/admin/dashboard/sales-chart"),
+                          ]);
+                          setStats(statsRes.data);
+                          setSalesChart(chartRes.data);
+                          setLastUpdated(new Date());
+                        } catch (err) {
+                          console.error("Failed to load dashboard data", err);
+                        } finally {
+                          setLoading(false);
+                        }
+                      };
+                      fetchData();
+                    }}
                     className="mt-2 px-3 py-1 text-xs bg-blue-50 text-blue-600 rounded-md hover:bg-blue-100 transition-colors"
                   >
                     Refresh Data

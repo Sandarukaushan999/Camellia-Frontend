@@ -1,6 +1,7 @@
 import React from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../state/AuthContext.jsx";
+import AlertNotifications from "../components/AlertNotifications.jsx";
 import logo from "../assests/Clogo.jpeg";
 
 const menuIcons = {
@@ -55,6 +56,9 @@ export default function MainLayout() {
 
   return (
     <div className="flex h-screen bg-gray-50">
+      {/* Alert Notifications */}
+      <AlertNotifications />
+      
       {/* Sidebar */}
       <aside className="w-64 bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col shadow-xl">
         {/* Logo/Brand */}
