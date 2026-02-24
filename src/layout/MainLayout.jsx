@@ -1,51 +1,28 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../state/AuthContext.jsx";
-import AlertNotifications from "../components/AlertNotifications.jsx";
+import HeaderNotifications from "../components/HeaderNotifications.jsx";
 import { Footer } from "../components/Footer.jsx";
+import api from "../utils/api.js";
+import { hasPermission } from "../utils/accessControl.js";
+import {
+  getActiveBranchId,
+  onActiveBranchChange,
+  setActiveBranchId as setStoredActiveBranchId,
+} from "../utils/branchContext.js";
 import logo from "../assests/Clogo.jpeg";
 
-const menuIcons = {
-  Dashboard: (
-    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 13.5L12 4l9 9.5M5.5 11v8.5h13V11M9.5 19.5v-5h5v5" />
-    </svg>
-  ),
-  "POS Billing": (
-    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M8 4.5h8M7 7.5h10M7 19.5h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10.5a2 2 0 002 2zM9.5 11.5h5m-5 3h5" />
-    </svg>
-  ),
-  Products: (
-    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 7.5L12 3l8 4.5-8 4.5L4 7.5zm0 0V16.5L12 21l8-4.5V7.5" />
-    </svg>
-  ),
-  Inventory: (
-    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M5 7h14v11a2 2 0 01-2 2H7a2 2 0 01-2-2V7zm0 0l2.5-4h9L19 7M9 12h6" />
-    </svg>
-  ),
-  Reports: (
-    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M5 19.5h14M7.5 16V10m4.5 6V6m4.5 10v-3" />
-    </svg>
-  ),
-  CRM: (
-    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={1.8}
-        d="M3.5 19.5h17M8 19.5v-1.8a3.8 3.8 0 017.6 0v1.8M12 11.5a3 3 0 100-6 3 3 0 000 6z"
-      />
-    </svg>
-  ),
-  Settings: (
-    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 8.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7zm8 3.5l-1.7-.5a6.5 6.5 0 00-.5-1.2l1-1.5-1.8-1.8-1.5 1a6.5 6.5 0 00-1.2-.5L14 4h-2l-.5 1.7a6.5 6.5 0 00-1.2.5l-1.5-1L7 7l1 1.5a6.5 6.5 0 00-.5 1.2L5.8 10v2l1.7.5a6.5 6.5 0 00.5 1.2l-1 1.5L7 17l1.5-1a6.5 6.5 0 001.2.5L10 18h2l.5-1.7a6.5 6.5 0 001.2-.5l1.5 1 1.8-1.8-1-1.5c.2-.4.4-.8.5-1.2L20 12v0z" />
-    </svg>
-  ),
+const menuIconClasses = {
+  Dashboard: "fi-rr-apps",
+  "POS Billing": "fi-rr-cash-register",
+  Sales: "fi-rr-chart-line-up",
+  Products: "fi-rr-shopping-bag",
+  Inventory: "fi-rr-boxes",
+  Expenses: "fi-rr-wallet",
+  Reports: "fi-rr-chart-pie-alt",
+  CRM: "fi-rr-users",
+  "User Management": "fi-rr-users-gear",
+  Settings: "fi-rr-settings-sliders",
 };
 
 export default function MainLayout() {
@@ -53,19 +30,109 @@ export default function MainLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [branches, setBranches] = useState([]);
+  const [activeBranchId, setActiveBranchId] = useState(() => getActiveBranchId(null));
 
-  const links =
-    user?.role === "ADMIN"
-      ? [
-          { to: "/dashboard", label: "Dashboard", subtitle: "Operational overview and live KPIs" },
-          { to: "/pos", label: "POS Billing", subtitle: "Fast checkout and order operations" },
-          { to: "/products", label: "Products", subtitle: "Menu catalog and pricing control" },
-          { to: "/inventory", label: "Inventory", subtitle: "Stock, ingredients, and alerts" },
-          { to: "/reports", label: "Reports", subtitle: "Sales intelligence and analytics" },
-          { to: "/crm", label: "CRM", subtitle: "Customer loyalty and campaign workflows" },
-          { to: "/settings", label: "Settings", subtitle: "System configuration and security" },
-        ]
-      : [{ to: "/pos", label: "POS Billing", subtitle: "Fast checkout and order operations" }];
+  const links = useMemo(() => {
+    const adminLinks = [
+      {
+        to: "/dashboard",
+        label: "Dashboard",
+        subtitle: "Operational overview and live KPIs",
+        permission: "dashboard.view",
+      },
+      {
+        to: "/pos",
+        label: "POS Billing",
+        subtitle: "Fast checkout and order operations",
+        permission: "pos.view",
+      },
+      {
+        to: "/sales",
+        label: "Sales",
+        subtitle: "Invoice ledger and transaction history",
+        permission: "sales.view",
+      },
+      {
+        to: "/products",
+        label: "Products",
+        subtitle: "Menu catalog and pricing control",
+        permission: "products.view",
+      },
+      {
+        to: "/inventory",
+        label: "Inventory",
+        subtitle: "Stock, ingredients, and alerts",
+        permission: "inventory.view",
+      },
+      {
+        to: "/expenses",
+        label: "Expenses",
+        subtitle: "Cost tracking and spend controls",
+        permission: "expenses.view",
+      },
+      {
+        to: "/reports",
+        label: "Reports",
+        subtitle: "Sales intelligence and analytics",
+        permission: "reports.view",
+      },
+      {
+        to: "/crm",
+        label: "CRM",
+        subtitle: "Customer loyalty and campaign workflows",
+        permission: "crm.view",
+      },
+      {
+        to: "/user-management",
+        label: "User Management",
+        subtitle: "Users, roles, and custom access control",
+        permission: "users.view",
+      },
+      {
+        to: "/settings",
+        label: "Settings",
+        subtitle: "System configuration and security",
+        permission: "settings.view",
+      },
+    ];
+
+    if (user?.role === "ADMIN") {
+      const permittedLinks = adminLinks.filter((link) =>
+        hasPermission(user, link.permission)
+      );
+      if (permittedLinks.length > 0) {
+        return permittedLinks;
+      }
+    }
+
+    const cashierLinks = [
+      {
+        to: "/pos",
+        label: "POS Billing",
+        subtitle: "Fast checkout and order operations",
+        permission: "pos.view",
+      },
+      {
+        to: "/sales",
+        label: "Sales",
+        subtitle: "Invoice ledger and transaction history",
+        permission: "sales.view",
+      },
+    ].filter((link) => hasPermission(user, link.permission));
+
+    if (cashierLinks.length > 0) {
+      return cashierLinks;
+    }
+    return [
+      {
+        to: "/pos",
+        label: "POS Billing",
+        subtitle: "Fast checkout and order operations",
+        permission: "pos.view",
+      },
+    ];
+  }, [user]);
 
   const activeLink = useMemo(() => {
     return (
@@ -93,10 +160,75 @@ export default function MainLayout() {
     };
   }, [mobileNavOpen]);
 
+  useEffect(() => {
+    if (!user?.token) {
+      setBranches([]);
+      return undefined;
+    }
+
+    let mounted = true;
+
+    const loadBranches = async () => {
+      try {
+        const [branchesRes, defaultRes] = await Promise.all([
+          api.get("/branches"),
+          api.get("/branches/me/default"),
+        ]);
+        if (!mounted) {
+          return;
+        }
+
+        const availableBranches = Array.isArray(branchesRes.data)
+          ? branchesRes.data.filter((branch) => branch?.is_active !== false)
+          : [];
+        setBranches(availableBranches);
+
+        if (availableBranches.length === 0) {
+          setActiveBranchId(null);
+          return;
+        }
+
+        const storedBranchId = getActiveBranchId(null);
+        const isStoredValid = availableBranches.some(
+          (branch) => Number(branch.id) === Number(storedBranchId)
+        );
+        const defaultBranchId = Number(defaultRes?.data?.branch?.id || 0) || null;
+        const isDefaultValid = availableBranches.some(
+          (branch) => Number(branch.id) === Number(defaultBranchId)
+        );
+
+        const nextBranchId = isStoredValid
+          ? Number(storedBranchId)
+          : isDefaultValid
+          ? Number(defaultBranchId)
+          : Number(availableBranches[0]?.id || 0) || null;
+
+        setActiveBranchId(nextBranchId);
+        setStoredActiveBranchId(nextBranchId);
+      } catch (err) {
+        console.error("Failed to load branches for workspace:", err);
+      }
+    };
+
+    loadBranches();
+    return () => {
+      mounted = false;
+    };
+  }, [user?.token]);
+
+  useEffect(() => onActiveBranchChange((nextBranchId) => setActiveBranchId(nextBranchId)), []);
+
+  const handleBranchChange = (event) => {
+    const nextBranchId = Number.parseInt(event.target.value, 10);
+    if (!Number.isFinite(nextBranchId) || nextBranchId <= 0) {
+      return;
+    }
+    setActiveBranchId(nextBranchId);
+    setStoredActiveBranchId(nextBranchId);
+  };
+
   return (
     <div className="cv-shell">
-      <AlertNotifications />
-
       {mobileNavOpen && (
         <button
           type="button"
@@ -124,7 +256,9 @@ export default function MainLayout() {
               to={link.to}
               className={({ isActive }) => `cv-nav-link ${isActive ? "is-active" : ""}`}
             >
-              <span className="cv-nav-icon">{menuIcons[link.label]}</span>
+              <span className="cv-nav-icon">
+                <i className={menuIconClasses[link.label] || "fi-rr-apps"} aria-hidden="true" />
+              </span>
               <span>{link.label}</span>
             </NavLink>
           ))}
@@ -168,13 +302,41 @@ export default function MainLayout() {
               </svg>
             </button>
             <div className="cv-route-meta">
-              <div className="cv-route-pill">{activeLink?.label || "Workspace"}</div>
+              <div className="cv-welcome-title cv-route-title-row">
+                <span className="cv-route-icon" aria-hidden="true">
+                  <i className={menuIconClasses[activeLink?.label] || "fi-rr-apps"} />
+                </span>
+                <span>Welcome, {user?.username || "Operator"}</span>
+              </div>
               <div className="cv-route-subtitle">{activeLink?.subtitle || "Professional POS operations"}</div>
+              <div className="cv-route-pill">{activeLink?.label || "Workspace"}</div>
             </div>
           </div>
 
           <div className="cv-topbar-end">
-            <div className="cv-role-chip">{user?.role || "USER"}</div>
+            {branches.length > 0 && (
+              <select
+                value={activeBranchId || ""}
+                onChange={handleBranchChange}
+                className="cv-branch-select"
+                aria-label="Active Branch"
+              >
+                {branches.map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.code || `B${branch.id}`} - {branch.name}
+                  </option>
+                ))}
+              </select>
+            )}
+            <button type="button" className="cv-top-icon-btn" aria-label="Search">
+              <i className="fi-rr-search" aria-hidden="true" />
+            </button>
+            <HeaderNotifications />
+            <div className="cv-role-chip">
+              {user?.isSuperAdmin || String(user?.username || "").trim().toUpperCase() === "VOXO"
+                ? "SUPER ADMIN"
+                : user?.role || "USER"}
+            </div>
             <div className="cv-date-chip">
               {new Date().toLocaleDateString("en-US", {
                 weekday: "short",
@@ -182,6 +344,9 @@ export default function MainLayout() {
                 day: "numeric",
                 year: "numeric",
               })}
+            </div>
+            <div className="cv-profile-chip" title={user?.username || "User"}>
+              {(user?.username?.charAt(0) || "U").toUpperCase()}
             </div>
           </div>
         </header>

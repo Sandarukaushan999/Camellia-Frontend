@@ -68,12 +68,13 @@ export default function RecentActivityCard({
     <CardShell
       title="Recent Activity"
       subtitle="Latest order flow"
+      icon={<i className="fi-rr-time-fast" aria-hidden="true" />}
       action={
         orders.length > 5 ? (
           <button
             type="button"
             onClick={() => setVisibleCount((count) => (count > 5 ? 5 : Math.min(orders.length, count + 5)))}
-            className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 transition-colors hover:border-blue-200 hover:text-blue-700"
+            className="cv-acid-btn-soft inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold transition-colors"
           >
             {visibleCount > 5 ? "Show less" : "View more"}
           </button>
@@ -152,10 +153,12 @@ export default function RecentActivityCard({
                 duration: dashboardAnimationConfig.duration.fast,
                 ease: dashboardAnimationConfig.ease.standard,
               })}
-              className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-blue-700 hover:border-blue-200 hover:bg-blue-50"
+              className="cv-acid-btn-soft mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold"
             >
               View more
-              <span aria-hidden="true">-&gt;</span>
+              <span className="cv-dashboard-icon-inline" aria-hidden="true">
+                <i className="fi-rr-arrow-small-right" />
+              </span>
             </motion.button>
           )}
         </>

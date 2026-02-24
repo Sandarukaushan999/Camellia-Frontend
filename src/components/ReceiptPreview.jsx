@@ -26,7 +26,7 @@ export default function ReceiptPreview({ orderData }) {
 
   // Load shop info saved from Settings (with safe defaults)
   let shop = {
-    name: "Camellia Café & Restaurant",
+    name: "Camellia Cafe & Restaurant",
   };
   try {
     const saved = localStorage.getItem("cv_shop_info");
@@ -41,7 +41,7 @@ export default function ReceiptPreview({ orderData }) {
   if (!items || items.length === 0) {
     return (
       <div className="text-center text-gray-400 py-8">
-        <div className="text-xl mb-2">🛒</div>
+        <div className="text-xl mb-2">[CART]</div>
         <div className="text-sm">No items in cart</div>
       </div>
     );
@@ -204,7 +204,7 @@ export default function ReceiptPreview({ orderData }) {
 
         {/* Header */}
         <div className="receipt-preview-header">
-          <h2>{shop.name || "Camellia Café & Restaurant"}</h2>
+          <h2>{shop.name || "Camellia Cafe & Restaurant"}</h2>
         </div>
 
         <div className="receipt-preview-divider"></div>
@@ -305,7 +305,7 @@ export default function ReceiptPreview({ orderData }) {
 
         {/* Footer */}
         <div className="receipt-preview-footer">
-          <div>© 2025 VOXOsolution</div>
+          <div>(c) 2025 VOXOsolution</div>
           <div>voxosolution@gmail.com</div>
           <div>071 090 1871</div>
         </div>
@@ -313,3 +313,5 @@ export default function ReceiptPreview({ orderData }) {
     </>
   );
 }
+
+

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import api from "../utils/api.js";
+import { getActiveBranchId, onActiveBranchChange } from "../utils/branchContext.js";
 
 const CATEGORIES = [
   "Rice",
@@ -69,6 +70,8 @@ function optimizeImageToDataUrl(file, options = {}) {
 
 export default function Products() {
   const imageInputRef = useRef(null);
+  const [activeBranchId, setActiveBranchId] = useState(() => getActiveBranchId(null));
+  const [branches, setBranches] = useState([]);
   const [products, setProducts] = useState([]);
   const [inventoryItems, setInventoryItems] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -90,13 +93,43 @@ export default function Products() {
   const [ingredientsForm, setIngredientsForm] = useState([{ inventory_item_id: "", quantity: "" }]);
   const [loadingIngredientsForm, setLoadingIngredientsForm] = useState(false);
   const [savingIngredientsForm, setSavingIngredientsForm] = useState(false);
+  const [showBranchOverrideModal, setShowBranchOverrideModal] = useState(false);
+  const [overrideProduct, setOverrideProduct] = useState(null);
+  const [savingOverride, setSavingOverride] = useState(false);
+  const [branchOverrideForm, setBranchOverrideForm] = useState({
+    has_price_override: false,
+    price_override: "",
+    is_active: true,
+  });
+  const [showOverrideMatrixModal, setShowOverrideMatrixModal] = useState(false);
+  const [overrideMatrix, setOverrideMatrix] = useState({ branches: [], products: [] });
+  const [overrideMatrixInitial, setOverrideMatrixInitial] = useState({});
+  const [overrideMatrixDraft, setOverrideMatrixDraft] = useState({});
+  const [overrideMatrixLoading, setOverrideMatrixLoading] = useState(false);
+  const [overrideMatrixSaving, setOverrideMatrixSaving] = useState(false);
+  const [overrideMatrixSearch, setOverrideMatrixSearch] = useState("");
   const [imageUploadBusy, setImageUploadBusy] = useState(false);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
     loadProducts();
     loadInventoryItems();
+  }, [activeBranchId]);
+
+  useEffect(() => {
+    const loadBranches = async () => {
+      try {
+        const { data } = await api.get("/branches");
+        setBranches(Array.isArray(data) ? data.filter((row) => row?.is_active !== false) : []);
+      } catch (err) {
+        console.error("Failed to load branches", err);
+        setBranches([]);
+      }
+    };
+    loadBranches();
   }, []);
+
+  useEffect(() => onActiveBranchChange((nextBranchId) => setActiveBranchId(nextBranchId)), []);
 
   const loadInventoryItems = async () => {
     try {
@@ -117,7 +150,8 @@ export default function Products() {
 
   const loadProducts = async () => {
     try {
-      const { data } = await api.get("/admin/products");
+      const params = activeBranchId ? { branch_id: activeBranchId } : {};
+      const { data } = await api.get("/admin/products", { params });
       setProducts(data);
     } catch (err) {
       console.error("Failed to load products", err);
@@ -455,12 +489,329 @@ export default function Products() {
     }
   };
 
+  const openBranchOverrideModal = (product) => {
+    if (!activeBranchId) {
+      setMessage("Select an active branch from the top bar first");
+      setTimeout(() => setMessage(""), 2600);
+      return;
+    }
+    const hasPriceOverride =
+      product.price_override !== null && product.price_override !== undefined;
+    const branchActive =
+      product.branch_is_active === null || product.branch_is_active === undefined
+        ? product.is_active !== false
+        : product.branch_is_active === true;
+
+    setOverrideProduct(product);
+    setBranchOverrideForm({
+      has_price_override: hasPriceOverride,
+      price_override: hasPriceOverride ? String(product.price_override) : "",
+      is_active: branchActive,
+    });
+    setShowBranchOverrideModal(true);
+  };
+
+  const closeBranchOverrideModal = () => {
+    setShowBranchOverrideModal(false);
+    setOverrideProduct(null);
+    setSavingOverride(false);
+    setBranchOverrideForm({
+      has_price_override: false,
+      price_override: "",
+      is_active: true,
+    });
+  };
+
+  const saveBranchOverride = async (event) => {
+    event.preventDefault();
+    if (!activeBranchId || !overrideProduct?.id) {
+      setMessage("Branch or product is missing");
+      return;
+    }
+
+    const payload = {
+      is_active: branchOverrideForm.is_active === true,
+      clear_override: branchOverrideForm.has_price_override !== true,
+    };
+    if (branchOverrideForm.has_price_override) {
+      const parsedPrice = parseFloat(branchOverrideForm.price_override);
+      if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+        setMessage("Override price must be a valid non-negative number");
+        setTimeout(() => setMessage(""), 2600);
+        return;
+      }
+      payload.price_override = parsedPrice;
+    } else {
+      payload.price_override = null;
+    }
+
+    setSavingOverride(true);
+    try {
+      await api.put(
+        `/branches/${activeBranchId}/products/${overrideProduct.id}`,
+        payload
+      );
+      await loadProducts();
+      markProductsUpdated();
+      setMessage("Branch override saved");
+      closeBranchOverrideModal();
+      setTimeout(() => setMessage(""), 2500);
+    } catch (err) {
+      console.error("Failed to save branch override", err);
+      setMessage(err.response?.data?.message || "Failed to save branch override");
+      setTimeout(() => setMessage(""), 3000);
+    } finally {
+      setSavingOverride(false);
+    }
+  };
+
+  const clearBranchOverride = async () => {
+    if (!activeBranchId || !overrideProduct?.id) {
+      return;
+    }
+    setSavingOverride(true);
+    try {
+      await api.delete(`/branches/${activeBranchId}/products/${overrideProduct.id}`);
+      await loadProducts();
+      markProductsUpdated();
+      setMessage("Branch override removed");
+      closeBranchOverrideModal();
+      setTimeout(() => setMessage(""), 2500);
+    } catch (err) {
+      console.error("Failed to remove branch override", err);
+      setMessage(err.response?.data?.message || "Failed to remove branch override");
+      setTimeout(() => setMessage(""), 3000);
+    } finally {
+      setSavingOverride(false);
+    }
+  };
+
+  const buildOverrideMatrixInitial = (matrixPayload) => {
+    const initial = {};
+    const branchesList = Array.isArray(matrixPayload?.branches) ? matrixPayload.branches : [];
+    const productsList = Array.isArray(matrixPayload?.products) ? matrixPayload.products : [];
+
+    for (const product of productsList) {
+      const baseActive = product?.base_active === true;
+      for (const branch of branchesList) {
+        const branchId = Number(branch?.id);
+        if (!Number.isFinite(branchId)) {
+          continue;
+        }
+        const key = `${product.product_id}:${branchId}`;
+        const cell = product?.overrides?.[String(branchId)] || {};
+        initial[key] = {
+          has_override: cell?.has_override === true,
+          base_active: baseActive,
+          price_override:
+            cell?.price_override === null || cell?.price_override === undefined
+              ? ""
+              : String(cell.price_override),
+          is_active:
+            cell?.effective_active === undefined || cell?.effective_active === null
+              ? baseActive
+              : cell.effective_active === true,
+        };
+      }
+    }
+    return initial;
+  };
+
+  const loadOverrideMatrix = async () => {
+    setOverrideMatrixLoading(true);
+    try {
+      const { data } = await api.get("/branches/product-overrides/matrix");
+      const safeMatrix = {
+        branches: Array.isArray(data?.branches) ? data.branches : [],
+        products: Array.isArray(data?.products) ? data.products : [],
+      };
+      setOverrideMatrix(safeMatrix);
+      setOverrideMatrixInitial(buildOverrideMatrixInitial(safeMatrix));
+      setOverrideMatrixDraft({});
+    } catch (err) {
+      console.error("Failed to load override matrix", err);
+      setOverrideMatrix({ branches: [], products: [] });
+      setOverrideMatrixInitial({});
+      setOverrideMatrixDraft({});
+      setMessage(err.response?.data?.message || "Failed to load branch override matrix");
+      setTimeout(() => setMessage(""), 3000);
+    } finally {
+      setOverrideMatrixLoading(false);
+    }
+  };
+
+  const openOverrideMatrixModal = async () => {
+    setShowOverrideMatrixModal(true);
+    setOverrideMatrixSearch("");
+    await loadOverrideMatrix();
+  };
+
+  const closeOverrideMatrixModal = () => {
+    setShowOverrideMatrixModal(false);
+    setOverrideMatrixDraft({});
+    setOverrideMatrixSearch("");
+    setOverrideMatrixSaving(false);
+  };
+
+  const getMatrixCellState = (product, branchId) => {
+    const baseKey = `${product.product_id}:${branchId}`;
+    const base = overrideMatrixInitial[baseKey] || {
+      has_override: false,
+      base_active: product?.base_active === true,
+      price_override: "",
+      is_active: product?.base_active === true,
+    };
+    const draft = overrideMatrixDraft[baseKey];
+    const current = draft ? { ...base, ...draft } : base;
+    return {
+      key: baseKey,
+      base,
+      current,
+      dirty: Boolean(draft),
+    };
+  };
+
+  const updateOverrideMatrixCell = (product, branchId, patch) => {
+    setOverrideMatrixDraft((prev) => {
+      const key = `${product.product_id}:${branchId}`;
+      const base = overrideMatrixInitial[key] || {
+        has_override: false,
+        base_active: product?.base_active === true,
+        price_override: "",
+        is_active: product?.base_active === true,
+      };
+      const current = prev[key] ? { ...base, ...prev[key] } : base;
+      const next = {
+        ...current,
+        ...patch,
+        price_override: patch.price_override ?? current.price_override ?? "",
+      };
+      const normalize = (value) => String(value ?? "").trim();
+      const samePrice = normalize(next.price_override) === normalize(base.price_override);
+      const sameActive = Boolean(next.is_active) === Boolean(base.is_active);
+
+      const nextDraft = { ...prev };
+      if (samePrice && sameActive) {
+        delete nextDraft[key];
+      } else {
+        nextDraft[key] = {
+          price_override: next.price_override,
+          is_active: next.is_active === true,
+        };
+      }
+      return nextDraft;
+    });
+  };
+
+  const resetOverrideMatrixCell = (product, branchId) => {
+    const key = `${product.product_id}:${branchId}`;
+    setOverrideMatrixDraft((prev) => {
+      if (!prev[key]) {
+        return prev;
+      }
+      const nextDraft = { ...prev };
+      delete nextDraft[key];
+      return nextDraft;
+    });
+  };
+
+  const saveOverrideMatrix = async () => {
+    const dirtyKeys = Object.keys(overrideMatrixDraft);
+    if (dirtyKeys.length === 0) {
+      setMessage("No matrix changes to save");
+      setTimeout(() => setMessage(""), 2200);
+      return;
+    }
+
+    const updates = [];
+    for (const key of dirtyKeys) {
+      const [productId, branchIdRaw] = key.split(":");
+      const branchId = Number(branchIdRaw);
+      const base = overrideMatrixInitial[key];
+      const draft = overrideMatrixDraft[key];
+      if (!productId || !Number.isFinite(branchId) || !base || !draft) {
+        continue;
+      }
+
+      const priceRaw = String(draft.price_override ?? "").trim();
+      let priceValue = null;
+      if (priceRaw.length > 0) {
+        priceValue = Number.parseFloat(priceRaw);
+        if (!Number.isFinite(priceValue) || priceValue < 0) {
+          setMessage(`Invalid override price for product #${productId} / branch #${branchId}`);
+          setTimeout(() => setMessage(""), 3200);
+          return;
+        }
+      }
+
+      const currentActive = draft.is_active === true;
+      const sameAsBase = priceRaw.length === 0 && currentActive === (base.base_active === true);
+      if (sameAsBase) {
+        if (base.has_override === true) {
+          updates.push({
+            branch_id: branchId,
+            product_id: productId,
+            delete_override: true,
+          });
+        }
+        continue;
+      }
+
+      updates.push({
+        branch_id: branchId,
+        product_id: productId,
+        is_active: currentActive,
+        clear_override: priceRaw.length === 0,
+        price_override: priceRaw.length === 0 ? null : priceValue,
+      });
+    }
+
+    if (updates.length === 0) {
+      setMessage("No effective override changes to save");
+      setTimeout(() => setMessage(""), 2200);
+      return;
+    }
+
+    setOverrideMatrixSaving(true);
+    try {
+      await api.put("/branches/product-overrides/matrix", { updates });
+      await loadProducts();
+      await loadOverrideMatrix();
+      markProductsUpdated();
+      setMessage("Branch override matrix saved");
+      setTimeout(() => setMessage(""), 2500);
+    } catch (err) {
+      console.error("Failed to save override matrix", err);
+      setMessage(err.response?.data?.message || "Failed to save branch override matrix");
+      setTimeout(() => setMessage(""), 3200);
+    } finally {
+      setOverrideMatrixSaving(false);
+    }
+  };
+
+  const filteredOverrideMatrixProducts = useMemo(() => {
+    const search = String(overrideMatrixSearch || "").trim().toLowerCase();
+    const productsList = Array.isArray(overrideMatrix.products) ? overrideMatrix.products : [];
+    if (!search) {
+      return productsList;
+    }
+    return productsList.filter((product) => {
+      const name = String(product?.name || "").toLowerCase();
+      const category = String(product?.category || "").toLowerCase();
+      return name.includes(search) || category.includes(search);
+    });
+  }, [overrideMatrix.products, overrideMatrixSearch]);
+
   const formatCurrency = (amount) => {
-    return `Rs. ${parseFloat(amount).toLocaleString("en-US", {
+    const safeAmount = Number.isFinite(parseFloat(amount)) ? parseFloat(amount) : 0;
+    return `Rs. ${safeAmount.toLocaleString("en-US", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`;
   };
+
+  const matrixDirtyCount = Object.keys(overrideMatrixDraft).length;
+  const matrixBranches = Array.isArray(overrideMatrix.branches) ? overrideMatrix.branches : [];
 
   return (
     <div className="cv-page cv-page--products p-4 md:p-6">
@@ -470,16 +821,39 @@ export default function Products() {
           <div>
             <h1 className="cv-page-title text-3xl font-bold text-gray-900">Products (Menu)</h1>
             <p className="cv-page-subtitle text-gray-600 mt-1">Manage your menu items and pricing</p>
+            <div className="mt-2 text-xs font-semibold text-blue-700">
+              Branch context:{" "}
+              {activeBranchId
+                ? branches.find((row) => Number(row.id) === Number(activeBranchId))?.name || `Branch #${activeBranchId}`
+                : "No branch selected"}
+            </div>
           </div>
-          <button
-            onClick={openAddModal}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow-md flex items-center gap-2"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Add Product
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={openOverrideMatrixModal}
+              className="px-4 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-colors shadow-md flex items-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 6h16M4 12h16M4 18h16M8 4v16M16 4v16"
+                />
+              </svg>
+              Branch Matrix
+            </button>
+            <button
+              onClick={openAddModal}
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow-md flex items-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Add Product
+            </button>
+          </div>
         </div>
 
         {/* Filters */}
@@ -594,23 +968,44 @@ export default function Products() {
                       </td>
                       <td className="px-6 py-4">
                         <span className="font-semibold text-gray-900">
-                          {formatCurrency(product.price)}
+                          {formatCurrency(
+                            product.effective_price !== undefined && product.effective_price !== null
+                              ? product.effective_price
+                              : product.price
+                          )}
                         </span>
+                        {product.price_override !== undefined && product.price_override !== null && (
+                          <div className="text-[11px] text-blue-600 font-semibold mt-1">
+                            Base {formatCurrency(product.price)}  -  Override applied
+                          </div>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         <button
                           onClick={() => toggleStatus(product)}
                           className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                            product.is_active
+                            (product.effective_active ?? product.is_active)
                               ? "bg-green-100 text-green-800 hover:bg-green-200"
                               : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                           }`}
                         >
-                          {product.is_active ? "Active" : "Inactive"}
+                          {(product.effective_active ?? product.is_active) ? "Active" : "Inactive"}
                         </button>
+                        {product.branch_is_active !== undefined && product.branch_is_active !== null && (
+                          <div className="text-[11px] text-blue-600 font-semibold mt-1">
+                            Branch override status
+                          </div>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => openBranchOverrideModal(product)}
+                            className="px-2.5 py-2 text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors text-xs font-semibold border border-indigo-100"
+                            title="Branch-specific override"
+                          >
+                            Branch
+                          </button>
                           <button
                             onClick={() => openIngredientsModal(product)}
                             className="px-2.5 py-2 text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors text-xs font-semibold border border-emerald-100"
@@ -657,7 +1052,7 @@ export default function Products() {
         </div>
 
         {/* Stats */}
-        <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white rounded-lg shadow-md p-4 border border-gray-200">
             <div className="text-sm text-gray-600 mb-1">Total Products</div>
             <div className="text-2xl font-bold text-gray-900">{products.length}</div>
@@ -665,13 +1060,25 @@ export default function Products() {
           <div className="bg-white rounded-lg shadow-md p-4 border border-gray-200">
             <div className="text-sm text-gray-600 mb-1">Active Products</div>
             <div className="text-2xl font-bold text-green-600">
-              {products.filter((p) => p.is_active).length}
+              {products.filter((p) => (p.effective_active ?? p.is_active)).length}
             </div>
           </div>
           <div className="bg-white rounded-lg shadow-md p-4 border border-gray-200">
             <div className="text-sm text-gray-600 mb-1">Categories</div>
             <div className="text-2xl font-bold text-blue-600">
               {new Set(products.map((p) => p.category).filter(Boolean)).size}
+            </div>
+          </div>
+          <div className="bg-white rounded-lg shadow-md p-4 border border-gray-200">
+            <div className="text-sm text-gray-600 mb-1">Branch Overrides</div>
+            <div className="text-2xl font-bold text-indigo-600">
+              {
+                products.filter(
+                  (p) =>
+                    (p.price_override !== null && p.price_override !== undefined) ||
+                    (p.branch_is_active !== null && p.branch_is_active !== undefined)
+                ).length
+              }
             </div>
           </div>
         </div>
@@ -972,6 +1379,347 @@ export default function Products() {
         </div>
       )}
 
+      {showOverrideMatrixModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-[95vw] max-h-[92vh] overflow-hidden flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">Branch Override Matrix</h2>
+                <p className="text-sm text-gray-600 mt-1">
+                  Bulk edit product price/active overrides across all branches
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {matrixDirtyCount > 0 && (
+                  <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
+                    {matrixDirtyCount} unsaved
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={closeOverrideMatrixModal}
+                  className="text-gray-400 hover:text-gray-600 text-2xl"
+                >
+                  {"\u00D7"}
+                </button>
+              </div>
+            </div>
+
+            <div className="px-6 py-3 border-b border-gray-200 bg-gray-50 flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
+              <input
+                type="text"
+                value={overrideMatrixSearch}
+                onChange={(e) => setOverrideMatrixSearch(e.target.value)}
+                placeholder="Search product in matrix..."
+                className="w-full md:max-w-sm px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <button
+                type="button"
+                onClick={loadOverrideMatrix}
+                disabled={overrideMatrixLoading}
+                className={`px-3 py-2 rounded-lg text-xs font-semibold ${
+                  overrideMatrixLoading
+                    ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                    : "bg-gray-700 text-white hover:bg-gray-800"
+                }`}
+              >
+                {overrideMatrixLoading ? "Refreshing..." : "Refresh Matrix"}
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-auto">
+              {overrideMatrixLoading ? (
+                <div className="py-16 text-center text-gray-500">Loading branch matrix...</div>
+              ) : filteredOverrideMatrixProducts.length === 0 ? (
+                <div className="py-16 text-center text-gray-500">
+                  No products found for the current matrix filter
+                </div>
+              ) : (
+                <div className="min-w-full">
+                  <table className="min-w-[980px] w-full text-xs">
+                    <thead className="sticky top-0 z-10 bg-gray-100 border-b border-gray-200">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700 uppercase tracking-wide">
+                          Product
+                        </th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700 uppercase tracking-wide">
+                          Category
+                        </th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700 uppercase tracking-wide">
+                          Base
+                        </th>
+                        {matrixBranches.map((branch) => (
+                          <th
+                            key={`matrix-branch-${branch.id}`}
+                            className="px-3 py-3 text-left font-semibold text-gray-700 uppercase tracking-wide min-w-[220px]"
+                          >
+                            {branch.code || `B${branch.id}`}  -  {branch.name}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {filteredOverrideMatrixProducts.map((product) => (
+                        <tr key={product.product_id} className="align-top hover:bg-gray-50/70">
+                          <td className="px-4 py-3">
+                            <div className="font-semibold text-gray-900">{product.name}</div>
+                            <div className="text-[11px] text-gray-500 mt-1">ID: {product.product_id}</div>
+                          </td>
+                          <td className="px-4 py-3 text-gray-700">{product.category || "-"}</td>
+                          <td className="px-4 py-3">
+                            <div className="font-semibold text-gray-900">
+                              {formatCurrency(product.base_price)}
+                            </div>
+                            <div className="text-[11px] mt-1">
+                              {product.base_active ? (
+                                <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 font-semibold">
+                                  Base Active
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded bg-gray-200 text-gray-700 font-semibold">
+                                  Base Inactive
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          {matrixBranches.map((branch) => {
+                            const branchId = Number(branch.id);
+                            const cell = getMatrixCellState(product, branchId);
+                            return (
+                              <td key={`${product.product_id}:${branchId}`} className="px-3 py-3">
+                                <div
+                                  className={`p-2 rounded-lg border space-y-2 ${
+                                    cell.dirty
+                                      ? "border-amber-300 bg-amber-50"
+                                      : "border-gray-200 bg-white"
+                                  }`}
+                                >
+                                  <div>
+                                    <div className="text-[10px] text-gray-500 mb-1">Price Override</div>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      value={cell.current.price_override}
+                                      onChange={(e) =>
+                                        updateOverrideMatrixCell(product, branchId, {
+                                          price_override: e.target.value,
+                                        })
+                                      }
+                                      placeholder="Base price"
+                                      className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                    />
+                                  </div>
+                                  <label className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-gray-700">
+                                    <input
+                                      type="checkbox"
+                                      checked={cell.current.is_active === true}
+                                      onChange={(e) =>
+                                        updateOverrideMatrixCell(product, branchId, {
+                                          is_active: e.target.checked,
+                                        })
+                                      }
+                                      className="h-3.5 w-3.5"
+                                    />
+                                    Active in this branch
+                                  </label>
+                                  <button
+                                    type="button"
+                                    onClick={() => resetOverrideMatrixCell(product, branchId)}
+                                    disabled={!cell.dirty}
+                                    className={`w-full px-2 py-1.5 rounded text-[11px] font-semibold ${
+                                      cell.dirty
+                                        ? "bg-gray-700 text-white hover:bg-gray-800"
+                                        : "bg-gray-200 text-gray-500 cursor-not-allowed"
+                                    }`}
+                                  >
+                                    Reset Cell
+                                  </button>
+                                </div>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-200 bg-white flex flex-wrap items-center justify-between gap-3">
+              <div className="text-xs text-gray-600">
+                {matrixDirtyCount > 0
+                  ? `${matrixDirtyCount} changes pending`
+                  : "No unsaved matrix changes"}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={closeOverrideMatrixModal}
+                  className="px-4 py-2 rounded-lg bg-gray-100 text-gray-700 font-semibold hover:bg-gray-200"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOverrideMatrixDraft({})}
+                  disabled={matrixDirtyCount === 0 || overrideMatrixSaving}
+                  className={`px-4 py-2 rounded-lg font-semibold ${
+                    matrixDirtyCount === 0 || overrideMatrixSaving
+                      ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                      : "bg-gray-700 text-white hover:bg-gray-800"
+                  }`}
+                >
+                  Discard Draft
+                </button>
+                <button
+                  type="button"
+                  onClick={saveOverrideMatrix}
+                  disabled={matrixDirtyCount === 0 || overrideMatrixSaving}
+                  className={`px-5 py-2 rounded-lg font-semibold ${
+                    matrixDirtyCount === 0 || overrideMatrixSaving
+                      ? "bg-indigo-300 text-white cursor-not-allowed"
+                      : "bg-indigo-600 text-white hover:bg-indigo-700"
+                  }`}
+                >
+                  {overrideMatrixSaving ? "Saving..." : `Save ${matrixDirtyCount} Changes`}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showBranchOverrideModal && overrideProduct && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-5">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">Branch Override</h2>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {overrideProduct.name}  -  Branch #{activeBranchId}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeBranchOverrideModal}
+                  className="text-gray-400 hover:text-gray-600 text-2xl"
+                >
+                  x
+                </button>
+              </div>
+
+              <form onSubmit={saveBranchOverride} className="space-y-5">
+                <div className="p-3 rounded-lg bg-gray-50 border border-gray-200">
+                  <div className="text-xs text-gray-500">Base Product Price</div>
+                  <div className="text-lg font-bold text-gray-900 mt-1">
+                    {formatCurrency(overrideProduct.price)}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between p-3 rounded-lg bg-gray-50 border border-gray-200">
+                  <div>
+                    <div className="text-sm font-semibold text-gray-900">Use Price Override</div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      Set branch-specific selling price
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={branchOverrideForm.has_price_override}
+                    onChange={(e) =>
+                      setBranchOverrideForm((prev) => ({
+                        ...prev,
+                        has_price_override: e.target.checked,
+                      }))
+                    }
+                    className="h-4 w-4"
+                  />
+                </div>
+
+                {branchOverrideForm.has_price_override && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Override Price (Rs.)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={branchOverrideForm.price_override}
+                      onChange={(e) =>
+                        setBranchOverrideForm((prev) => ({
+                          ...prev,
+                          price_override: e.target.value,
+                        }))
+                      }
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="0.00"
+                      required
+                    />
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between p-3 rounded-lg bg-gray-50 border border-gray-200">
+                  <div>
+                    <div className="text-sm font-semibold text-gray-900">Branch Active Status</div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      Enable/disable this product for the selected branch
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={branchOverrideForm.is_active}
+                    onChange={(e) =>
+                      setBranchOverrideForm((prev) => ({
+                        ...prev,
+                        is_active: e.target.checked,
+                      }))
+                    }
+                    className="h-4 w-4"
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-4 border-t border-gray-200">
+                  <button
+                    type="button"
+                    onClick={closeBranchOverrideModal}
+                    className="flex-1 px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearBranchOverride}
+                    disabled={savingOverride}
+                    className={`px-4 py-3 rounded-lg font-semibold transition-colors ${
+                      savingOverride
+                        ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                        : "bg-gray-700 text-white hover:bg-gray-800"
+                    }`}
+                  >
+                    Remove Override
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingOverride}
+                    className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-colors shadow-md ${
+                      savingOverride
+                        ? "bg-blue-300 text-white cursor-not-allowed"
+                        : "bg-blue-600 text-white hover:bg-blue-700"
+                    }`}
+                  >
+                    {savingOverride ? "Saving..." : "Save Override"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Ingredients Modal */}
       {showIngredientsModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1109,3 +1857,4 @@ export default function Products() {
     </div>
   );
 }
+

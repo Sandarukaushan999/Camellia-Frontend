@@ -11,47 +11,18 @@ const actionStyles = {
 };
 
 function ActionIcon({ type }) {
-  if (type === "new-order") {
-    return (
-      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14m7-7H5" />
-      </svg>
-    );
-  }
-  if (type === "add-stock") {
-    return (
-      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M21 8l-9-5-9 5m18 0l-9 5m9-5v9l-9 5m0-9L3 8m9 5v9"
-        />
-      </svg>
-    );
-  }
-  if (type === "reports") {
-    return (
-      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M5 19V9m7 10V5m7 14v-6M3 21h18"
-        />
-      </svg>
-    );
-  }
+  const iconClassByType = {
+    "new-order": "fi-rr-plus",
+    "add-stock": "fi-rr-boxes",
+    reports: "fi-rr-chart-line-up",
+    settings: "fi-rr-settings",
+  };
+  const resolvedClass = iconClassByType[type] || "fi-rr-apps";
+
   return (
-    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M11.049 2.927c.3-1.14 1.926-1.14 2.226 0a1.2 1.2 0 001.69.737c1.01-.51 2.18.66 1.67 1.67a1.2 1.2 0 00.737 1.69c1.14.3 1.14 1.926 0 2.226a1.2 1.2 0 00-.737 1.69c.51 1.01-.66 2.18-1.67 1.67a1.2 1.2 0 00-1.69.737c-.3 1.14-1.926 1.14-2.226 0a1.2 1.2 0 00-1.69-.737c-1.01.51-2.18-.66-1.67-1.67a1.2 1.2 0 00-.737-1.69c-1.14-.3-1.14-1.926 0-2.226a1.2 1.2 0 00.737-1.69c-.51-1.01.66-2.18 1.67-1.67a1.2 1.2 0 001.69-.737z"
-      />
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9.5A2.5 2.5 0 1112 14.5 2.5 2.5 0 0112 9.5z" />
-    </svg>
+    <span className="cv-dashboard-icon-inline">
+      <i className={resolvedClass} aria-hidden="true" />
+    </span>
   );
 }
 
@@ -59,7 +30,11 @@ export default function QuickActionsCard({ actions }) {
   const reducedMotion = useReducedMotion();
 
   return (
-    <CardShell title="Quick Actions" subtitle="Fast shortcuts for daily tasks">
+    <CardShell
+      title="Quick Actions"
+      subtitle="Fast shortcuts for daily tasks"
+      icon={<i className="fi-rr-bolt" aria-hidden="true" />}
+    >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {actions.map((action, index) => (
           <motion.button

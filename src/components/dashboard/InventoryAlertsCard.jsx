@@ -6,17 +6,17 @@ import { dashboardAnimationConfig, withReducedMotion } from "./animationsConfig.
 
 const severityStyles = {
   low: {
-    icon: "!",
+    iconClass: "fi-rr-info",
     label: "Low",
     className: "border-amber-200 bg-gradient-to-r from-amber-50 to-white text-amber-800",
   },
   medium: {
-    icon: "!!",
+    iconClass: "fi-rr-exclamation",
     label: "Medium",
     className: "border-orange-200 bg-gradient-to-r from-orange-50 to-white text-orange-800",
   },
   critical: {
-    icon: "!!!",
+    iconClass: "fi-rr-triangle-warning",
     label: "Critical",
     className: "border-rose-200 bg-gradient-to-r from-rose-50 to-white text-rose-800",
   },
@@ -52,7 +52,11 @@ export default function InventoryAlertsCard({ loading, alerts }) {
   const categoryEntries = Object.entries(groupedAlerts);
 
   return (
-    <CardShell title="Inventory & Alerts" subtitle="Stock and expiry risk tracker">
+    <CardShell
+      title="Inventory & Alerts"
+      subtitle="Stock and expiry risk tracker"
+      icon={<i className="fi-rr-triangle-warning" aria-hidden="true" />}
+    >
       {loading ? (
         <AlertsSkeleton />
       ) : categoryEntries.length === 0 ? (
@@ -89,7 +93,9 @@ export default function InventoryAlertsCard({ loading, alerts }) {
                           <p className="text-xs text-slate-600">{alert.detail}</p>
                         </div>
                         <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-semibold">
-                          <span aria-hidden="true">{severity.icon}</span>
+                          <span className="cv-dashboard-icon-inline" aria-hidden="true">
+                            <i className={severity.iconClass} />
+                          </span>
                           {severity.label}
                         </span>
                       </div>

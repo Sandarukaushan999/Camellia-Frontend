@@ -1,5 +1,6 @@
 ﻿import React, { useEffect, useMemo, useState } from "react";
 import api from "../utils/api.js";
+import { getActiveBranchId, onActiveBranchChange } from "../utils/branchContext.js";
 
 const REPORT_TYPES = [
   { id: "sales", label: "Sales", icon: "📊" },
@@ -7,6 +8,9 @@ const REPORT_TYPES = [
   { id: "profit", label: "Profit & Expenses", icon: "💰" },
   { id: "inventory", label: "Inventory", icon: "📦" },
   { id: "payment", label: "Payments", icon: "💳" },
+  { id: "forecast", label: "Forecast", icon: "📈" },
+  { id: "customers", label: "Customer Segments", icon: "👥" },
+  { id: "exports", label: "Export Queue", icon: "🧾" },
 ];
 
 function toMoney(amount) {
@@ -47,6 +51,7 @@ function downloadCsv(fileName, rows) {
 
 export default function Reports() {
   const [activeReport, setActiveReport] = useState("sales");
+  const [activeBranchId, setActiveBranchId] = useState(() => getActiveBranchId(null));
   const [dateRange, setDateRange] = useState("30");
   const [orderType, setOrderType] = useState("ALL");
   const [paymentMethod, setPaymentMethod] = useState("ALL");
@@ -64,31 +69,65 @@ export default function Reports() {
     nearExpiry: [],
     expired: [],
   });
+  const [forecastData, setForecastData] = useState(null);
+  const [customerSegments, setCustomerSegments] = useState({
+    summary: null,
+    customers: [],
+  });
+  const [reportExports, setReportExports] = useState([]);
 
   const params = useMemo(
     () => ({
       days: Number(dateRange) || 30,
       orderType,
       paymentMethod,
+      branch_id: activeBranchId || undefined,
     }),
-    [dateRange, orderType, paymentMethod]
+    [activeBranchId, dateRange, orderType, paymentMethod]
   );
+
+  useEffect(() => onActiveBranchChange((nextBranchId) => setActiveBranchId(nextBranchId)), []);
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       try {
-        const [salesRes, detailsRes, itemsRes, payRes, orderTypeRes, expenseRes, alertRes] =
+        const [salesRes, detailsRes, itemsRes, payRes, orderTypeRes, expenseRes, alertRes, forecastRes, segmentsRes, exportsRes] =
           await Promise.all([
             api.get("/admin/reports/sales", { params }),
             api.get("/admin/reports/sales/details", {
               params: { ...params, limit: 200, offset: 0 },
             }),
-            api.get("/admin/dashboard/top-items"),
+            api.get("/admin/dashboard/top-items", {
+              params: { branch_id: params.branch_id },
+            }),
             api.get("/admin/reports/payment-breakdown", { params }),
             api.get("/admin/reports/order-type-breakdown", { params }),
-            api.get("/admin/expenses", { params: { days: params.days, limit: 500 } }),
+            api.get("/admin/expenses", {
+              params: {
+                days: params.days,
+                limit: 500,
+                branch_id: params.branch_id,
+              },
+            }),
             api.get("/inventory/alerts"),
+            api.get("/analytics/forecast/sales", {
+              params: {
+                days: params.days,
+                horizon: 14,
+                branch_id: params.branch_id,
+              },
+            }),
+            api.get("/analytics/segments/customers", {
+              params: {
+                days: Math.max(params.days, 90),
+                limit: 300,
+                branch_id: params.branch_id,
+              },
+            }),
+            api.get("/analytics/report-exports", {
+              params: { limit: 100 },
+            }),
           ]);
 
         setSalesData(Array.isArray(salesRes.data) ? salesRes.data : []);
@@ -98,6 +137,12 @@ export default function Reports() {
         setOrderTypeBreakdown(Array.isArray(orderTypeRes.data) ? orderTypeRes.data : []);
         setExpenses(Array.isArray(expenseRes.data) ? expenseRes.data : []);
         setInventoryAlerts(alertRes.data || { lowStock: [], nearExpiry: [], expired: [] });
+        setForecastData(forecastRes.data || null);
+        setCustomerSegments({
+          summary: segmentsRes.data?.summary || null,
+          customers: Array.isArray(segmentsRes.data?.customers) ? segmentsRes.data.customers : [],
+        });
+        setReportExports(Array.isArray(exportsRes.data) ? exportsRes.data : []);
       } catch (err) {
         console.error("Failed to load reports", err);
         setMessage(err?.response?.data?.message || "Failed to load reports");
@@ -130,6 +175,51 @@ export default function Reports() {
 
   const estimatedProfit = useMemo(() => salesSummary.netSales - totalExpenses, [salesSummary, totalExpenses]);
 
+  const queueExportJob = async () => {
+    try {
+      const payload = {
+        report_type: activeReport.toUpperCase(),
+        filters: {
+          days: params.days,
+          orderType: params.orderType,
+          paymentMethod: params.paymentMethod,
+          branch_id: params.branch_id || null,
+        },
+      };
+      const { data } = await api.post("/analytics/report-exports", payload);
+      setReportExports((prev) => [data, ...prev]);
+      setMessage("Report export job queued");
+    } catch (err) {
+      setMessage(err?.response?.data?.message || "Failed to queue export job");
+    } finally {
+      setTimeout(() => setMessage(""), 2800);
+    }
+  };
+
+  const runExportJob = async (jobId) => {
+    try {
+      const { data } = await api.post(`/analytics/report-exports/${jobId}/run`);
+      setReportExports((prev) => prev.map((job) => (job.id === jobId ? data : job)));
+      setMessage("Export job marked as completed");
+    } catch (err) {
+      setMessage(err?.response?.data?.message || "Failed to run export job");
+    } finally {
+      setTimeout(() => setMessage(""), 2800);
+    }
+  };
+
+  const cancelExportJob = async (jobId) => {
+    try {
+      const { data } = await api.post(`/analytics/report-exports/${jobId}/cancel`);
+      setReportExports((prev) => prev.map((job) => (job.id === jobId ? data : job)));
+      setMessage("Export job cancelled");
+    } catch (err) {
+      setMessage(err?.response?.data?.message || "Failed to cancel export job");
+    } finally {
+      setTimeout(() => setMessage(""), 2800);
+    }
+  };
+
   const exportCurrent = () => {
     const stamp = new Date().toISOString().slice(0, 10);
     if (activeReport === "sales") {
@@ -146,6 +236,18 @@ export default function Reports() {
     }
     if (activeReport === "payment") {
       downloadCsv(`payment-breakdown-${stamp}.csv`, paymentBreakdown);
+      return;
+    }
+    if (activeReport === "forecast") {
+      downloadCsv(`sales-forecast-${stamp}.csv`, forecastData?.forecast || []);
+      return;
+    }
+    if (activeReport === "customers") {
+      downloadCsv(`customer-segments-${stamp}.csv`, customerSegments.customers || []);
+      return;
+    }
+    if (activeReport === "exports") {
+      downloadCsv(`report-export-jobs-${stamp}.csv`, reportExports || []);
       return;
     }
     const rows = [
@@ -166,21 +268,27 @@ export default function Reports() {
           </div>
           <div className="flex gap-2">
             <button
+              onClick={queueExportJob}
+              className="cv-acid-btn px-3 py-2 rounded-lg text-sm font-semibold"
+            >
+              Queue Export
+            </button>
+            <button
               onClick={exportCurrent}
-              className="px-3 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700"
+              className="cv-acid-btn-soft px-3 py-2 rounded-lg text-sm font-semibold"
             >
               Export CSV
             </button>
             <button
               onClick={() => window.print()}
-              className="px-3 py-2 bg-gray-600 text-white rounded-lg text-sm font-semibold hover:bg-gray-700"
+              className="px-3 py-2 bg-gray-700 text-white rounded-lg text-sm font-semibold hover:bg-gray-800"
             >
               Print
             </button>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-md p-2 border border-gray-200">
+        <div className="cv-reports-tabs bg-white rounded-xl shadow-md p-2 border border-gray-200">
           <div className="flex flex-wrap gap-2">
             {REPORT_TYPES.map((type) => (
               <button
@@ -199,7 +307,7 @@ export default function Reports() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-md p-4 border border-gray-200 grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="cv-reports-filters bg-white rounded-xl shadow-md p-4 border border-gray-200 grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Date Range</label>
             <select
@@ -425,6 +533,160 @@ export default function Reports() {
                     ))}
                   </div>
                 </div>
+              </div>
+            )}
+
+            {activeReport === "forecast" && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-white border rounded-xl p-4">
+                    <div className="text-xs text-gray-500">Model</div>
+                    <div className="text-lg font-bold text-gray-900">{forecastData?.model || "-"}</div>
+                  </div>
+                  <div className="bg-white border rounded-xl p-4">
+                    <div className="text-xs text-gray-500">History Days</div>
+                    <div className="text-2xl font-bold text-gray-900">{forecastData?.history_days || 0}</div>
+                  </div>
+                  <div className="bg-white border rounded-xl p-4">
+                    <div className="text-xs text-gray-500">Avg Daily Sales</div>
+                    <div className="text-2xl font-bold text-gray-900">
+                      {toMoney(forecastData?.average_daily_sales || 0)}
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-white border rounded-xl overflow-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left">Forecast Date</th>
+                        <th className="px-4 py-3 text-right">Predicted Sales</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(forecastData?.forecast || []).length === 0 ? (
+                        <tr>
+                          <td colSpan={2} className="px-4 py-8 text-center text-gray-500">
+                            No forecast data
+                          </td>
+                        </tr>
+                      ) : (
+                        (forecastData?.forecast || []).map((row) => (
+                          <tr key={row.day} className="border-t">
+                            <td className="px-4 py-3">{row.day}</td>
+                            <td className="px-4 py-3 text-right font-semibold">
+                              {toMoney(row.predicted_total)}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {activeReport === "customers" && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  {Object.entries(customerSegments.summary?.segments || {}).map(([segment, count]) => (
+                    <div key={segment} className="bg-white border rounded-xl p-4">
+                      <div className="text-xs text-gray-500">{segment}</div>
+                      <div className="text-2xl font-bold text-gray-900">{count}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="bg-white border rounded-xl overflow-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left">Customer</th>
+                        <th className="px-4 py-3 text-left">Segment</th>
+                        <th className="px-4 py-3 text-right">Orders</th>
+                        <th className="px-4 py-3 text-right">Net Spend</th>
+                        <th className="px-4 py-3 text-right">Days Since Last</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {customerSegments.customers.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                            No segment data
+                          </td>
+                        </tr>
+                      ) : (
+                        customerSegments.customers.map((customer) => (
+                          <tr key={customer.customer_key} className="border-t">
+                            <td className="px-4 py-3">
+                              {customer.customer_name || customer.customer_phone || customer.customer_key}
+                            </td>
+                            <td className="px-4 py-3">{customer.segment}</td>
+                            <td className="px-4 py-3 text-right">{customer.order_count}</td>
+                            <td className="px-4 py-3 text-right font-semibold">{toMoney(customer.net_spend)}</td>
+                            <td className="px-4 py-3 text-right">{customer.days_since_last ?? "-"}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {activeReport === "exports" && (
+              <div className="bg-white border rounded-xl overflow-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left">ID</th>
+                      <th className="px-4 py-3 text-left">Type</th>
+                      <th className="px-4 py-3 text-left">Status</th>
+                      <th className="px-4 py-3 text-left">Scheduled</th>
+                      <th className="px-4 py-3 text-left">Generated</th>
+                      <th className="px-4 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reportExports.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                          No export jobs
+                        </td>
+                      </tr>
+                    ) : (
+                      reportExports.map((job) => (
+                        <tr key={job.id} className="border-t">
+                          <td className="px-4 py-3">#{job.id}</td>
+                          <td className="px-4 py-3">{job.report_type}</td>
+                          <td className="px-4 py-3">{job.status}</td>
+                          <td className="px-4 py-3">{new Date(job.scheduled_for).toLocaleString()}</td>
+                          <td className="px-4 py-3">
+                            {job.generated_at ? new Date(job.generated_at).toLocaleString() : "-"}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => runExportJob(job.id)}
+                                disabled={job.status === "SUCCESS" || job.status === "CANCELLED"}
+                                className="px-2.5 py-1.5 rounded-lg bg-blue-600 text-white disabled:bg-gray-300"
+                              >
+                                Run
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => cancelExportJob(job.id)}
+                                disabled={job.status === "SUCCESS" || job.status === "CANCELLED"}
+                                className="px-2.5 py-1.5 rounded-lg bg-gray-700 text-white disabled:bg-gray-300"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
             )}
           </>

@@ -6,6 +6,7 @@ export default function Receipt({ orderData }) {
 
   const {
     billNo,
+    invoiceNo,
     date,
     time,
     orderType,
@@ -53,9 +54,13 @@ export default function Receipt({ orderData }) {
     return name.substring(0, maxLength - 3) + "...";
   };
 
+  const resolvedInvoiceNumber =
+    String(invoiceNo || "").trim() ||
+    `VOXO${String(billNo || "0").replace(/[^\d]/g, "").padStart(6, "0").slice(-6)}`;
+
   // Load shop info saved from Settings (with safe defaults)
   let shop = {
-    name: "Camellia Café & Restaurant",
+    name: "Camellia Cafe & Restaurant",
     address: "",
     phone: "",
     email: "",
@@ -252,7 +257,7 @@ export default function Receipt({ orderData }) {
 
         {/* Header */}
         <div className="receipt-header">
-          <h1>{shop.name || "Camellia Café & Restaurant"}</h1>
+          <h1>{shop.name || "Camellia Cafe & Restaurant"}</h1>
           {shop.address && <p>{shop.address}</p>}
           {(shop.phone || shop.email) && (
             <p>
@@ -268,8 +273,8 @@ export default function Receipt({ orderData }) {
         {/* Bill Information */}
         <div className="receipt-info">
           <div className="receipt-info-row">
-            <span className="receipt-info-label">Bill No</span>
-            <span>: CM-{String(billNo || "0000000").padStart(7, "0")}</span>
+            <span className="receipt-info-label">Invoice No</span>
+            <span>: {resolvedInvoiceNumber}</span>
           </div>
           <div className="receipt-info-row">
             <span className="receipt-info-label">Date</span>
@@ -399,7 +404,7 @@ export default function Receipt({ orderData }) {
 
         {/* Footer */}
         <div className="receipt-footer">
-          <div>© 2025 VOXOsolution</div>
+          <div>(c) 2025 VOXOsolution</div>
           <div>voxosolution@gmail.com</div>
           <div>071 090 1871</div>
         </div>
@@ -411,4 +416,5 @@ export default function Receipt({ orderData }) {
     </div>
   );
 }
+
 

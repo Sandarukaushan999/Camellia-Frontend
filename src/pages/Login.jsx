@@ -15,8 +15,8 @@ export default function Login() {
     setError("");
     setLoading(true);
     try {
-      const user = await login(username, password);
-      navigate(user.role === "ADMIN" ? "/dashboard" : "/pos");
+      await login(username, password);
+      navigate("/", { replace: true });
     } catch (err) {
       setError(err.response?.data?.message || "Login failed");
     } finally {
@@ -57,12 +57,12 @@ export default function Login() {
         {/* Copyright Footer */}
         <div className="mt-8 text-center text-xs text-gray-600">
           <div className="space-y-1">
-            <div>© {new Date().getFullYear()} VOXOsolution</div>
+            <div>(c) {new Date().getFullYear()} VOXOsolution</div>
             <div className="flex items-center justify-center gap-2 flex-wrap">
               <a href="mailto:voxosolution@gmail.com" className="hover:text-blue-600 transition-colors">
                 voxosolution@gmail.com
               </a>
-              <span>•</span>
+              <span> - </span>
               <a href="https://wa.me/94710901871" target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 transition-colors">
                 0710901871
               </a>
@@ -73,4 +73,5 @@ export default function Login() {
     </div>
   );
 }
+
 

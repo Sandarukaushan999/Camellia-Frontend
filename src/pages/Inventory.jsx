@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from "react";
 import api from "../utils/api.js";
+import { getActiveBranchId, onActiveBranchChange } from "../utils/branchContext.js";
 
 export default function Inventory() {
+  const [activeBranchId, setActiveBranchId] = useState(() => getActiveBranchId(null));
   const [inventoryItems, setInventoryItems] = useState([]);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -11,6 +13,11 @@ export default function Inventory() {
   const [editingItem, setEditingItem] = useState(null);
   const [linkingItem, setLinkingItem] = useState(null);
   const [productLinks, setProductLinks] = useState([]);
+  const [reorderSuggestions, setReorderSuggestions] = useState([]);
+  const [requisitions, setRequisitions] = useState([]);
+  const [loadingSupplyOps, setLoadingSupplyOps] = useState(false);
+  const [creatingRequisition, setCreatingRequisition] = useState(false);
+  const [requisitionActionBusyId, setRequisitionActionBusyId] = useState(null);
   const [loadingProductLinks, setLoadingProductLinks] = useState(false);
   const [savingProductLinks, setSavingProductLinks] = useState(false);
   const [form, setForm] = useState({
@@ -39,7 +46,8 @@ export default function Inventory() {
 
   const loadProducts = async () => {
     try {
-      const { data } = await api.get("/admin/products");
+      const params = activeBranchId ? { branch_id: activeBranchId } : {};
+      const { data } = await api.get("/admin/products", { params });
       setProducts(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Failed to load products for ingredient mapping", err);
@@ -47,10 +55,108 @@ export default function Inventory() {
     }
   };
 
+  const loadSupplyOps = async () => {
+    try {
+      setLoadingSupplyOps(true);
+      const params = activeBranchId ? { branch_id: activeBranchId, limit: 20 } : { limit: 20 };
+      const [reorderRes, reqRes] = await Promise.all([
+        api.get("/supply/reorder-suggestions", { params }),
+        api.get("/supply/requisitions", { params }),
+      ]);
+      setReorderSuggestions(Array.isArray(reorderRes.data) ? reorderRes.data : []);
+      setRequisitions(Array.isArray(reqRes.data) ? reqRes.data : []);
+    } catch (err) {
+      console.error("Failed to load supply operations", err);
+      setReorderSuggestions([]);
+      setRequisitions([]);
+    } finally {
+      setLoadingSupplyOps(false);
+    }
+  };
+
+  const createAutoRequisition = async () => {
+    if (!Array.isArray(reorderSuggestions) || reorderSuggestions.length === 0) {
+      setMessage("No low-stock suggestions available for requisition");
+      setTimeout(() => setMessage(""), 2600);
+      return;
+    }
+    try {
+      setCreatingRequisition(true);
+      const payload = activeBranchId ? { branch_id: activeBranchId } : {};
+      await api.post("/supply/requisitions", payload);
+      await loadSupplyOps();
+      setMessage("Auto requisition created from reorder suggestions");
+      setTimeout(() => setMessage(""), 2600);
+    } catch (err) {
+      setMessage(err.response?.data?.message || "Failed to create requisition");
+      setTimeout(() => setMessage(""), 3000);
+    } finally {
+      setCreatingRequisition(false);
+    }
+  };
+
+  const updateRequisitionStatus = async (requisitionId, action) => {
+    const normalizedAction = String(action || "").trim().toLowerCase();
+    if (!requisitionId || !normalizedAction) {
+      return;
+    }
+    const endpointMap = {
+      submit: "submit",
+      approve: "approve",
+      reject: "reject",
+    };
+    const endpoint = endpointMap[normalizedAction];
+    if (!endpoint) {
+      return;
+    }
+
+    setRequisitionActionBusyId(`${normalizedAction}-${requisitionId}`);
+    try {
+      await api.post(`/supply/requisitions/${requisitionId}/${endpoint}`);
+      await loadSupplyOps();
+      setMessage(`Requisition #${requisitionId} ${normalizedAction}ed`);
+      setTimeout(() => setMessage(""), 2600);
+    } catch (err) {
+      setMessage(err.response?.data?.message || `Failed to ${normalizedAction} requisition`);
+      setTimeout(() => setMessage(""), 3000);
+    } finally {
+      setRequisitionActionBusyId(null);
+    }
+  };
+
+  const convertRequisitionToPO = async (requisitionId) => {
+    if (!requisitionId) {
+      return;
+    }
+
+    setRequisitionActionBusyId(`convert-${requisitionId}`);
+    try {
+      const { data } = await api.post(`/supply/requisitions/${requisitionId}/convert-to-po`);
+      await loadSupplyOps();
+      const poId = Number(data?.purchase_order_id || 0);
+      setMessage(
+        poId > 0
+          ? `Requisition #${requisitionId} converted to PO #${poId}`
+          : `Requisition #${requisitionId} converted to purchase order`
+      );
+      setTimeout(() => setMessage(""), 3000);
+    } catch (err) {
+      setMessage(
+        err.response?.data?.message || `Failed to convert requisition #${requisitionId} to PO`
+      );
+      setTimeout(() => setMessage(""), 3200);
+    } finally {
+      setRequisitionActionBusyId(null);
+    }
+  };
+
   useEffect(() => {
     load();
     loadProducts();
-  }, []);
+    loadSupplyOps();
+  }, [activeBranchId]);
+
+  useEffect(() => onActiveBranchChange((nextBranchId) => setActiveBranchId(nextBranchId)), []);
 
   const openAddModal = () => {
     setEditingItem(null);
@@ -437,6 +543,148 @@ export default function Inventory() {
             </div>
           </div>
         </div>
+
+        <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="cv-inventory-supply-card bg-white rounded-xl shadow-md border border-gray-200 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h3 className="text-base font-bold text-gray-900">Reorder Suggestions</h3>
+                <p className="text-xs text-gray-500 mt-1">Based on current stock vs minimum stock</p>
+              </div>
+              <button
+                type="button"
+                onClick={createAutoRequisition}
+                disabled={creatingRequisition || reorderSuggestions.length === 0}
+                className={`px-3 py-2 rounded-lg text-xs font-semibold ${
+                  creatingRequisition || reorderSuggestions.length === 0
+                    ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                    : "bg-blue-600 text-white hover:bg-blue-700"
+                }`}
+              >
+                {creatingRequisition ? "Creating..." : "Create Requisition"}
+              </button>
+            </div>
+            {loadingSupplyOps ? (
+              <div className="py-8 text-sm text-gray-500 text-center">Loading suggestions...</div>
+            ) : reorderSuggestions.length === 0 ? (
+              <div className="py-8 text-sm text-gray-500 text-center">No reorder suggestions</div>
+            ) : (
+              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                {reorderSuggestions.slice(0, 15).map((item) => (
+                  <div key={item.inventory_item_id} className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                    <div className="font-semibold text-gray-900">{item.name}</div>
+                    <div className="text-xs text-gray-600 mt-1">
+                      Stock {item.current_stock} {item.unit || ""}  -  Min {item.min_stock}  -  Reorder {item.reorder_qty}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="cv-inventory-supply-card bg-white rounded-xl shadow-md border border-gray-200 p-4">
+            <div className="mb-3">
+              <h3 className="text-base font-bold text-gray-900">Recent Requisitions</h3>
+              <p className="text-xs text-gray-500 mt-1">Procurement workflow</p>
+            </div>
+            {loadingSupplyOps ? (
+              <div className="py-8 text-sm text-gray-500 text-center">Loading requisitions...</div>
+            ) : requisitions.length === 0 ? (
+              <div className="py-8 text-sm text-gray-500 text-center">No requisitions yet</div>
+            ) : (
+              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                {requisitions.slice(0, 12).map((req) => (
+                  <div key={req.id} className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-semibold text-gray-900">REQ #{req.id}</div>
+                      <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800">
+                        {req.status}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex items-center gap-2 flex-wrap">
+                      {String(req.status || "").toUpperCase() === "DRAFT" && (
+                        <button
+                          type="button"
+                          disabled={Boolean(requisitionActionBusyId)}
+                          onClick={() => updateRequisitionStatus(req.id, "submit")}
+                          className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold ${
+                            requisitionActionBusyId
+                              ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                              : "bg-blue-600 text-white hover:bg-blue-700"
+                          }`}
+                        >
+                          Submit
+                        </button>
+                      )}
+                      {(String(req.status || "").toUpperCase() === "SUBMITTED" ||
+                        String(req.status || "").toUpperCase() === "DRAFT") && (
+                        <button
+                          type="button"
+                          disabled={Boolean(requisitionActionBusyId)}
+                          onClick={() => updateRequisitionStatus(req.id, "approve")}
+                          className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold ${
+                            requisitionActionBusyId
+                              ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                              : "bg-emerald-600 text-white hover:bg-emerald-700"
+                          }`}
+                        >
+                          Approve
+                        </button>
+                      )}
+                      {(String(req.status || "").toUpperCase() === "SUBMITTED" ||
+                        String(req.status || "").toUpperCase() === "DRAFT") && (
+                        <button
+                          type="button"
+                          disabled={Boolean(requisitionActionBusyId)}
+                          onClick={() => updateRequisitionStatus(req.id, "reject")}
+                          className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold ${
+                            requisitionActionBusyId
+                              ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                              : "bg-gray-700 text-white hover:bg-gray-800"
+                          }`}
+                        >
+                          Reject
+                        </button>
+                      )}
+                      {String(req.status || "").toUpperCase() === "APPROVED" &&
+                        !req.purchase_order_id && (
+                          <button
+                            type="button"
+                            disabled={Boolean(requisitionActionBusyId)}
+                            onClick={() => convertRequisitionToPO(req.id)}
+                            className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold ${
+                              requisitionActionBusyId
+                                ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                                : "bg-indigo-600 text-white hover:bg-indigo-700"
+                            }`}
+                          >
+                            {requisitionActionBusyId === `convert-${req.id}`
+                              ? "Converting..."
+                              : "Convert to PO"}
+                          </button>
+                        )}
+                      {req.purchase_order_id && (
+                        <span className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-100 text-emerald-800">
+                          PO #{req.purchase_order_id}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-600 mt-1">
+                      {(req.items || []).length} items  -  {new Date(req.created_at).toLocaleString()}
+                    </div>
+                    {req.purchase_order_id && (
+                      <div className="text-xs text-gray-500 mt-1">
+                        Linked PO #{req.purchase_order_id}
+                        {req.purchase_order_status ? ` (${req.purchase_order_status})` : ""}
+                        {req.supplier_name ? `  -  ${req.supplier_name}` : ""}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Add/Edit Modal */}
@@ -452,7 +700,7 @@ export default function Inventory() {
                   onClick={() => setShowModal(false)}
                   className="text-gray-400 hover:text-gray-600 text-2xl"
                 >
-                  ×
+                  x
                 </button>
               </div>
 
@@ -672,3 +920,4 @@ export default function Inventory() {
     </div>
   );
 }
+

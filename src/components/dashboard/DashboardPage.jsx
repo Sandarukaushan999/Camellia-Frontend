@@ -11,6 +11,7 @@ import InventoryAlertsCard from "./InventoryAlertsCard.jsx";
 import QuickActionsCard from "./QuickActionsCard.jsx";
 import { dashboardMockData } from "./dashboardMockData.js";
 import { FadeInItem, FadeInStagger } from "./primitives/FadeIn.jsx";
+import { getActiveBranchId, onActiveBranchChange } from "../../utils/branchContext.js";
 import "./dashboard.css";
 
 const RANGE_DAYS = {
@@ -151,6 +152,7 @@ export default function DashboardPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [usingMockData, setUsingMockData] = useState(false);
   const [newOrderIds, setNewOrderIds] = useState([]);
+  const [activeBranchId, setActiveBranchId] = useState(() => getActiveBranchId(null));
 
   const newOrderTimeoutRef = useRef(null);
   const loadingDemoTimeoutRef = useRef(null);
@@ -183,6 +185,8 @@ export default function DashboardPage() {
     });
   }, []);
 
+  useEffect(() => onActiveBranchChange((nextBranchId) => setActiveBranchId(nextBranchId)), []);
+
   useEffect(() => {
     if (!user?.token) {
       setIsLoading(false);
@@ -207,9 +211,15 @@ export default function DashboardPage() {
     };
 
     const fetchPrimaryData = async () => {
+      const branchParams = activeBranchId ? { branch_id: activeBranchId } : {};
       const [statsRes, chartRes] = await Promise.all([
-        api.get("/admin/dashboard/stats"),
-        api.get("/admin/dashboard/sales-chart", { params: { days: 90 } }),
+        api.get("/admin/dashboard/stats", { params: branchParams }),
+        api.get("/admin/dashboard/sales-chart", {
+          params: {
+            days: 90,
+            ...branchParams,
+          },
+        }),
       ]);
 
       if (!mounted) {
@@ -224,10 +234,11 @@ export default function DashboardPage() {
     };
 
     const fetchSecondaryData = async () => {
+      const branchParams = activeBranchId ? { branch_id: activeBranchId } : {};
       const [breakdownRes, itemsRes, ordersRes] = await Promise.all([
-        api.get("/admin/dashboard/order-breakdown"),
-        api.get("/admin/dashboard/top-items"),
-        api.get("/admin/dashboard/recent-orders"),
+        api.get("/admin/dashboard/order-breakdown", { params: branchParams }),
+        api.get("/admin/dashboard/top-items", { params: branchParams }),
+        api.get("/admin/dashboard/recent-orders", { params: branchParams }),
       ]);
 
       if (!mounted) {
@@ -285,7 +296,7 @@ export default function DashboardPage() {
         clearTimeout(loadingDemoTimeoutRef.current);
       }
     };
-  }, [mergeRecentOrders, user?.token]);
+  }, [activeBranchId, mergeRecentOrders, user?.token]);
 
   const replayLoadingState = () => {
     setIsLoadingDemo(true);
@@ -422,25 +433,39 @@ export default function DashboardPage() {
       <div className="mx-auto max-w-7xl space-y-4 lg:space-y-5">
         <header className="cv-page-header flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white px-4 py-3 shadow-sm">
           <div>
-            <h1 className="cv-page-title text-lg font-semibold text-slate-900">Operational Dashboard</h1>
+            <h1 className="cv-page-title flex items-center gap-2 text-lg font-semibold text-slate-900">
+              <span className="cv-dashboard-icon-inline">
+                <i className="fi-rr-dashboard" aria-hidden="true" />
+              </span>
+              Operational Dashboard
+            </h1>
             <p className="cv-page-subtitle text-sm text-slate-500">Sales, orders, inventory alerts, and quick actions</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {usingMockData && (
-              <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">
+                <span className="cv-dashboard-icon-inline">
+                  <i className="fi-rr-info" aria-hidden="true" />
+                </span>
                 Sample data mode
               </span>
             )}
             {errorMessage && (
-              <span className="rounded-full bg-rose-100 px-2 py-1 text-xs font-semibold text-rose-700">
+              <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-1 text-xs font-semibold text-rose-700">
+                <span className="cv-dashboard-icon-inline">
+                  <i className="fi-rr-triangle-warning" aria-hidden="true" />
+                </span>
                 {errorMessage}
               </span>
             )}
             <button
               type="button"
               onClick={replayLoadingState}
-              className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:border-blue-200 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+              className="cv-acid-btn-soft inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lime-500 focus-visible:ring-offset-2"
             >
+              <span className="cv-dashboard-icon-inline">
+                <i className="fi-rr-refresh" aria-hidden="true" />
+              </span>
               Replay loading state
             </button>
           </div>
@@ -451,8 +476,8 @@ export default function DashboardPage() {
             <KpiCards kpis={kpis} loading={cardLoading} formatCurrency={formatCurrency} />
           </FadeInItem>
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            <FadeInItem className="lg:col-span-2">
+          <div className="cv-dashboard-grid cv-dashboard-grid--chart grid grid-cols-1 gap-4 items-stretch lg:grid-cols-3">
+            <FadeInItem className="h-full lg:col-span-2">
               <SalesChartCard
                 data={salesRangeData}
                 loading={cardLoading}
@@ -462,7 +487,7 @@ export default function DashboardPage() {
                 formatCurrency={formatCurrency}
               />
             </FadeInItem>
-            <FadeInItem>
+            <FadeInItem className="h-full">
               <OrderBreakdownCard
                 loading={cardLoading}
                 breakdown={effectiveBreakdown}
@@ -472,15 +497,15 @@ export default function DashboardPage() {
             </FadeInItem>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <FadeInItem>
+          <div className="cv-dashboard-grid cv-dashboard-grid--equal grid grid-cols-1 gap-4 items-stretch lg:grid-cols-2">
+            <FadeInItem className="h-full">
               <TopSellingItemsCard
                 loading={cardLoading}
                 items={effectiveTopItems}
                 formatCurrency={formatCurrency}
               />
             </FadeInItem>
-            <FadeInItem>
+            <FadeInItem className="h-full">
               <RecentActivityCard
                 loading={cardLoading}
                 orders={effectiveRecentOrders}
@@ -491,14 +516,14 @@ export default function DashboardPage() {
             </FadeInItem>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <FadeInItem>
+          <div className="cv-dashboard-grid cv-dashboard-grid--equal grid grid-cols-1 gap-4 items-stretch lg:grid-cols-2">
+            <FadeInItem className="h-full">
               <InventoryAlertsCard
                 loading={cardLoading}
                 alerts={dashboardMockData.inventoryAlerts}
               />
             </FadeInItem>
-            <FadeInItem>
+            <FadeInItem className="h-full">
               <QuickActionsCard actions={quickActions} />
             </FadeInItem>
           </div>

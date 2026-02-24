@@ -40,13 +40,13 @@ export default function AlertNotifications() {
   const getAlertIcon = (alertType) => {
     switch (alertType) {
       case "LOW_STOCK":
-        return "⚠️";
+        return "!";
       case "EXPIRY":
-        return "⏰";
+        return "TIME";
       case "EXPIRED":
-        return "🚨";
+        return "ALERT";
       default:
-        return "ℹ️";
+        return "INFO";
     }
   };
 
@@ -103,4 +103,5 @@ export default function AlertNotifications() {
     </div>
   );
 }
+
 

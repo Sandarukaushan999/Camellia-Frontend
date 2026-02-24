@@ -109,6 +109,7 @@ export default function SalesChartCard({
     <CardShell
       title="Monthly Sales"
       subtitle={formatRelativeTime(lastUpdated)}
+      icon={<i className="fi-rr-chart-line-up" aria-hidden="true" />}
       action={
         <div className="inline-flex rounded-lg bg-slate-100 p-1">
           {rangeOptions.map((option) => (
@@ -139,8 +140,8 @@ export default function SalesChartCard({
       {loading ? (
         <ChartSkeleton />
       ) : (
-        <div className="h-[320px]">
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="h-[320px] min-w-0">
+          <ResponsiveContainer width="100%" height={320} minWidth={0} minHeight={240}>
             <LineChart data={data} margin={{ top: 8, right: 10, left: 2, bottom: 4 }}>
               <defs>
                 <linearGradient id="salesAreaGradient" x1="0" y1="0" x2="0" y2="1">

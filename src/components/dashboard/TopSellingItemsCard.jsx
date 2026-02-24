@@ -84,12 +84,13 @@ export default function TopSellingItemsCard({ loading, items, formatCurrency }) 
     <CardShell
       title="Top Selling Items"
       subtitle="Best performing products today"
+      icon={<i className="fi-rr-star" aria-hidden="true" />}
       action={
         items.length > 5 ? (
           <button
             type="button"
             onClick={() => setVisibleCount((count) => (count > 5 ? 5 : Math.min(items.length, count + 5)))}
-            className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 transition-colors hover:border-blue-200 hover:text-blue-700"
+            className="cv-acid-btn-soft inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold transition-colors"
           >
             {visibleCount > 5 ? "Show less" : "View more"}
           </button>
@@ -165,7 +166,7 @@ export default function TopSellingItemsCard({ loading, items, formatCurrency }) 
                 ease: dashboardAnimationConfig.ease.standard,
               })}
               onClick={() => setVisibleCount((count) => Math.min(items.length, count + 5))}
-              className="mt-3 inline-flex w-full items-center justify-center gap-1 rounded-lg border border-slate-200 py-2 text-xs font-semibold text-blue-700 hover:border-blue-200 hover:bg-blue-50"
+              className="cv-acid-btn-soft mt-3 inline-flex w-full items-center justify-center gap-1 rounded-lg py-2 text-xs font-semibold"
             >
               Show {Math.min(5, items.length - visibleCount)} more
             </motion.button>

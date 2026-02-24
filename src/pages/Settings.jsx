@@ -4,12 +4,12 @@ import api from "../utils/api.js";
 import { adminAPI, triggerDownload } from "../services/adminAPI.js";
 
 const SETTINGS_SECTIONS = [
-  { id: "shop", label: "Shop & Branch Info", icon: "🏬" },
-  { id: "tax", label: "Tax & Service Charges", icon: "🧾" },
-  { id: "printer", label: "Printer & Devices", icon: "🖨️" },
-  { id: "backup", label: "Backup & Restore", icon: "🗄️" },
-  { id: "security", label: "Security & Access", icon: "🛡️" },
-  { id: "preferences", label: "System Preferences", icon: "⚙️" },
+  { id: "shop", label: "Shop & Branch Info", icon: "SI" },
+  { id: "tax", label: "Tax & Service Charges", icon: "TX" },
+  { id: "printer", label: "Printer & Devices", icon: "PR" },
+  { id: "backup", label: "Backup & Restore", icon: "BK" },
+  { id: "security", label: "Security & Access", icon: "SC" },
+  { id: "preferences", label: "System Preferences", icon: "SY" },
 ];
 
 const DEFAULT_PRINTER_SETTINGS = {
@@ -295,7 +295,7 @@ export default function Settings() {
         <div className="flex flex-col lg:flex-row gap-6">
           {/* Sidebar - Section Selector */}
           <div className="lg:w-64 flex-shrink-0">
-            <div className="bg-white rounded-xl shadow-md border border-gray-200 p-2">
+            <div className="cv-settings-nav bg-white rounded-xl shadow-md border border-gray-200 p-2">
               {SETTINGS_SECTIONS.map((section) => (
                 <button
                   key={section.id}
@@ -306,7 +306,7 @@ export default function Settings() {
                       : "text-gray-700 hover:bg-gray-100"
                   }`}
                 >
-                  <span className="text-base">{section.icon}</span>
+                  <span className="cv-mini-icon text-[11px]">{section.icon}</span>
                   <span className="text-left">{section.label}</span>
                 </button>
               ))}
@@ -319,7 +319,7 @@ export default function Settings() {
             {activeSection === "shop" && (
               <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
                 <h2 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-                  <span>🏬</span> Shop & Branch Info
+                  <span className="cv-mini-icon text-[11px]">SI</span> Shop & Branch Info
                 </h2>
                 <div className="space-y-4">
                   <div>
@@ -407,7 +407,7 @@ export default function Settings() {
             {activeSection === "tax" && (
               <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
                 <h2 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-                  <span>🧾</span> Tax & Service Charges
+                  <span className="cv-mini-icon text-[11px]">TX</span> Tax & Service Charges
                 </h2>
                 <div className="space-y-6">
                   {/* Tax Settings */}
@@ -542,7 +542,7 @@ export default function Settings() {
             {activeSection === "printer" && (
               <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
                 <h2 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-                  <span>🖨️</span> Printer & Devices
+                  <span className="cv-mini-icon text-[11px]">PR</span> Printer & Devices
                 </h2>
                 <div className="space-y-6">
                   <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
@@ -690,7 +690,7 @@ export default function Settings() {
             {activeSection === "backup" && (
               <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
                 <h2 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-                  <span>🗄️</span> Backup & Restore
+                  <span className="cv-mini-icon text-[11px]">BK</span> Backup & Restore
                 </h2>
                 <div className="space-y-6">
                   <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
@@ -764,7 +764,7 @@ export default function Settings() {
             {activeSection === "security" && (
               <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
                 <h2 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-                  <span>🛡️</span> Security & Access
+                  <span className="cv-mini-icon text-[11px]">SC</span> Security & Access
                 </h2>
                 <div className="space-y-6">
                   <div>
@@ -808,7 +808,7 @@ export default function Settings() {
             {activeSection === "preferences" && (
               <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
                 <h2 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-                  <span>⚙️</span> System Preferences
+                  <span className="cv-mini-icon text-[11px]">SY</span> System Preferences
                 </h2>
                 <div className="space-y-6">
                   <div>
@@ -930,7 +930,7 @@ export default function Settings() {
                 </button>
                 <button
                   onClick={handleSave}
-                  className="px-6 py-2.5 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow-md"
+                  className="cv-acid-btn px-6 py-2.5 rounded-lg font-semibold shadow-md"
                 >
                   Save Changes
                 </button>
@@ -949,3 +949,4 @@ export default function Settings() {
     </div>
   );
 }
+

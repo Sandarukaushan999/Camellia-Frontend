@@ -9,11 +9,25 @@ export function AuthProvider({ children }) {
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
+        const inferredSuperAdmin =
+          String(parsed?.username || "").trim().toUpperCase() === "VOXO";
+        const normalized = {
+          id: parsed?.id || null,
+          username: parsed?.username || null,
+          role: parsed?.role || null,
+          isSuperAdmin:
+            parsed?.isSuperAdmin === true ||
+            parsed?.is_super_admin === true ||
+            inferredSuperAdmin,
+          token: parsed?.token || null,
+          permissions: Array.isArray(parsed?.permissions) ? parsed.permissions : [],
+          customRole: parsed?.customRole || null,
+        };
         // Set token in axios defaults immediately
-        if (parsed?.token) {
-          api.defaults.headers.common.Authorization = `Bearer ${parsed.token}`;
+        if (normalized.token) {
+          api.defaults.headers.common.Authorization = `Bearer ${normalized.token}`;
         }
-        return parsed;
+        return normalized;
       } catch (e) {
         return null;
       }
@@ -31,7 +45,20 @@ export function AuthProvider({ children }) {
 
   const login = async (username, password) => {
     const { data } = await api.post("/auth/login", { username, password });
-    const next = { username, role: data.role, token: data.token };
+    const next = {
+      id: data.id || null,
+      username: data.username || username,
+      role: data.role,
+      isSuperAdmin:
+        data?.isSuperAdmin === true ||
+        data?.is_super_admin === true ||
+        String(data?.username || username || "")
+          .trim()
+          .toUpperCase() === "VOXO",
+      token: data.token,
+      permissions: Array.isArray(data.permissions) ? data.permissions : [],
+      customRole: data.customRole || null,
+    };
     setUser(next);
     api.defaults.headers.common.Authorization = `Bearer ${data.token}`;
     return next;
@@ -61,4 +88,3 @@ export function AuthProvider({ children }) {
 export function useAuth() {
   return useContext(AuthContext);
 }
-

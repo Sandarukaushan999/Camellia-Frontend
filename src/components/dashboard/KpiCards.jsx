@@ -5,56 +5,11 @@ import CountUpNumber from "./primitives/CountUpNumber.jsx";
 import SkeletonBlock from "./primitives/SkeletonBlock.jsx";
 
 const iconMap = {
-  sales: (
-    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={1.8}
-        d="M12 6v12m0-12c-2.2 0-4 1.1-4 2.5S9.8 11 12 11s4 1.1 4 2.5S14.2 16 12 16m0-10V4m0 14v2M5 12a7 7 0 1014 0A7 7 0 005 12z"
-      />
-    </svg>
-  ),
-  orders: (
-    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={1.8}
-        d="M9 5h6m-7 4h8M7 3h10a2 2 0 012 2v14a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2z"
-      />
-    </svg>
-  ),
-  avg: (
-    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={1.8}
-        d="M4 18l5-6 4 3 7-9M16 6h4v4"
-      />
-    </svg>
-  ),
-  profit: (
-    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={1.8}
-        d="M4 6h16M7 10h10M8 14h8M5 4h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1z"
-      />
-    </svg>
-  ),
-  active: (
-    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={1.8}
-        d="M13 3L4 14h6l-1 7 9-11h-6l1-7z"
-      />
-    </svg>
-  ),
+  sales: "fi-rr-chart-line-up",
+  orders: "fi-rr-clipboard-list",
+  avg: "fi-rr-calculator",
+  profit: "fi-rr-wallet",
+  active: "fi-rr-bolt",
 };
 
 function TrendPill({ trend }) {
@@ -88,7 +43,7 @@ function TrendPill({ trend }) {
 
 function KpiSkeleton() {
   return (
-    <article className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm md:p-5">
+    <article className="cv-kpi-card cv-kpi-skeleton h-full min-h-[162px] rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm md:p-5">
       <div className="mb-3 flex items-center justify-between">
         <SkeletonBlock className="h-9 w-9 rounded-lg" />
         <SkeletonBlock className="h-5 w-14 rounded-full" />
@@ -130,7 +85,7 @@ export default function KpiCards({ kpis, loading, formatCurrency }) {
             duration: dashboardAnimationConfig.duration.fast,
             ease: dashboardAnimationConfig.ease.standard,
           })}
-          className="group relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm md:p-5"
+          className={`cv-kpi-card cv-kpi-card--${kpi.id} group relative h-full min-h-[162px] overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm md:p-5`}
         >
           <div
             className={`absolute -right-10 -top-10 h-24 w-24 rounded-full bg-gradient-to-br opacity-0 blur-2xl transition-opacity duration-200 group-hover:opacity-100 ${
@@ -144,7 +99,9 @@ export default function KpiCards({ kpis, loading, formatCurrency }) {
                   kpi.iconBgClass || "bg-blue-100"
                 } ${kpi.iconClass || "text-blue-600"}`}
               >
-                {iconMap[kpi.id]}
+                <span className="cv-dashboard-icon-inline">
+                  <i className={iconMap[kpi.id] || "fi-rr-chart-line-up"} aria-hidden="true" />
+                </span>
               </div>
               <TrendPill trend={kpi.trend} />
             </div>

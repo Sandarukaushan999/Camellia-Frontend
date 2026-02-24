@@ -62,7 +62,11 @@ export default function OrderBreakdownCard({ loading, breakdown, peakHours, form
   );
 
   return (
-    <CardShell title="Order Breakdown" subtitle="By payment method + peak hour windows">
+    <CardShell
+      title="Order Breakdown"
+      subtitle="By payment method + peak hour windows"
+      icon={<i className="fi-rr-chart-pie-alt" aria-hidden="true" />}
+    >
       {loading ? (
         <BreakdownSkeleton />
       ) : normalizedBreakdown.length === 0 ? (
@@ -72,8 +76,8 @@ export default function OrderBreakdownCard({ loading, breakdown, peakHours, form
       ) : (
         <>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-[170px_1fr] md:items-center">
-            <div className="h-[170px]">
-              <ResponsiveContainer width="100%" height="100%">
+            <div className="h-[170px] min-w-0">
+              <ResponsiveContainer width="100%" height={170} minWidth={0} minHeight={140}>
                 <PieChart>
                   <Tooltip content={<BreakdownTooltip formatCurrency={formatCurrency} />} />
                   <Pie
@@ -141,6 +145,9 @@ export default function OrderBreakdownCard({ loading, breakdown, peakHours, form
                   })}
                   className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700"
                 >
+                  <span className="cv-dashboard-icon-inline">
+                    <i className="fi-rr-time-fast" aria-hidden="true" />
+                  </span>
                   <span>{slot.label}</span>
                   <span className="rounded-full bg-white px-2 py-0.5 text-[11px] text-blue-700">
                     {slot.count}

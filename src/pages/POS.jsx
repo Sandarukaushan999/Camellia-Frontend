@@ -3,6 +3,7 @@ import api from "../utils/api.js";
 import Receipt from "../components/Receipt.jsx";
 import ReceiptPreview from "../components/ReceiptPreview.jsx";
 import { useAuth } from "../state/AuthContext.jsx";
+import { getActiveBranchId, onActiveBranchChange } from "../utils/branchContext.js";
 
 const CATEGORY_ICONS = {
   ALL: "📦",
@@ -60,6 +61,7 @@ function loadShopInfoFromStorage() {
 
 export default function POS() {
   const { user } = useAuth();
+  const [activeBranchId, setActiveBranchId] = useState(() => getActiveBranchId(null));
   const [products, setProducts] = useState([]);
   const [cart, setCart] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState("ALL");
@@ -101,18 +103,22 @@ export default function POS() {
 
   const loadProducts = useCallback(async () => {
     try {
-      const res = await api.get("/admin/products/pos");
+      const params = activeBranchId ? { branch_id: activeBranchId } : {};
+      const res = await api.get("/admin/products/pos", { params });
       setProducts(res.data);
     } catch (err) {
       console.error("Failed to load products", err);
       setProducts([]);
     }
-  }, []);
+  }, [activeBranchId]);
 
   const loadHeldOrders = useCallback(async () => {
     try {
       setHeldOrdersLoading(true);
-      const { data } = await api.get("/orders/held", { params: { limit: 100 } });
+      const params = activeBranchId
+        ? { limit: 100, branch_id: activeBranchId }
+        : { limit: 100 };
+      const { data } = await api.get("/orders/held", { params });
       setHeldOrders(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Failed to load held orders", err);
@@ -120,7 +126,9 @@ export default function POS() {
     } finally {
       setHeldOrdersLoading(false);
     }
-  }, []);
+  }, [activeBranchId]);
+
+  useEffect(() => onActiveBranchChange((nextBranchId) => setActiveBranchId(nextBranchId)), []);
 
   useEffect(() => {
     loadProducts();
@@ -561,6 +569,7 @@ export default function POS() {
       const normalizedPhone = normalizePhone(customerPhone);
       const payload = {
         order_type: orderType,
+        branch_id: activeBranchId || null,
         table_number: tableNumber || null,
         customer_name: String(crmCustomerName || customerName || "").trim() || null,
         customer_phone: normalizedPhone || null,
@@ -723,11 +732,13 @@ export default function POS() {
         total: totals.total,
         total_before_loyalty: totals.totalBeforeLoyalty,
         payment_method: method,
+        branch_id: activeBranchId || null,
         customer_id: selectedCustomer?.id || null,
         customer_name: resolvedCustomerName || null,
         customer_phone: normalizedPhone || selectedCustomer?.phone || null,
         loyalty_points_redeemed: totals.loyaltyPointsRedeemed || 0,
         loyalty_discount_amount: totals.loyaltyDiscount || 0,
+        manual_discount_amount: totals.manualDiscount || 0,
         order_type: orderType,
         channel: "POS",
         items: cart.map((item) => ({
@@ -738,10 +749,14 @@ export default function POS() {
       };
 
       const res = await api.post("/orders", payload);
+      const invoiceNumber =
+        String(res.data?.invoice_number || "").trim() ||
+        `VOXO${String(res.data?.id || "").padStart(6, "0")}`;
       
       // Prepare receipt data
       const receiptInfo = {
         billNo: res.data.id,
+        invoiceNo: invoiceNumber,
         date: new Date().toISOString().split("T")[0],
         time: new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
         orderType: orderType,
@@ -771,7 +786,7 @@ export default function POS() {
 
       setReceiptData(receiptInfo);
       setShowReceipt(true);
-      setMessage(`Order #${res.data.id} paid successfully!`);
+      setMessage(`Invoice ${invoiceNumber} paid successfully`);
 
       // Auto print with direct ESC/POS when configured, fallback to browser print.
       if (printerSettings.autoPrint) {
@@ -875,7 +890,7 @@ export default function POS() {
   return (
     <div className="cv-page cv-page--pos h-full min-h-full flex flex-col">
       {/* Header - Order Type Selector */}
-      <div className="bg-white border-b border-gray-200 px-4 py-3">
+      <div className="cv-pos-order-mode bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-sm mb-3">
         <div className="flex items-center gap-3 flex-wrap">
               <div className={`flex gap-2 w-full sm:flex-1 ${systemPrefs.touchMode ? "space-x-2" : ""}`}>
             {["DINE-IN", "TAKEAWAY", "DELIVERY"].map((type) => (
@@ -884,7 +899,7 @@ export default function POS() {
                 onClick={() => setOrderType(type)}
                   className={`flex-1 sm:flex-none px-4 ${systemPrefs.touchMode ? "py-3" : "py-2"} rounded-lg font-semibold text-sm transition-all ${
                   orderType === type
-                    ? "bg-blue-600 text-white shadow-md"
+                    ? "cv-acid-chip-selected shadow-md"
                     : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                 }`}
               >
@@ -919,11 +934,11 @@ export default function POS() {
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col xl:flex-row overflow-hidden min-h-0">
+      <div className="flex-1 flex flex-col xl:flex-row overflow-hidden min-h-0 gap-3">
         {/* Left Side - Product Selection */}
-        <div className="flex-1 min-h-0 flex flex-col bg-white xl:border-r border-gray-200">
+        <div className="cv-pos-catalog flex-1 min-h-0 flex flex-col bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
           {/* Category Bar - Enhanced */}
-          <div className="bg-gradient-to-r from-gray-50 to-gray-100 border-b-2 border-gray-300 px-4 py-3 overflow-x-auto shadow-sm">
+          <div className="cv-pos-category-bar bg-gradient-to-r from-gray-50 to-gray-100 border-b-2 border-gray-300 px-4 py-3 overflow-x-auto shadow-sm">
             <div className="flex gap-3 min-w-max">
               {categories.map((cat) => {
                 const icon = CATEGORY_ICONS[cat] || "📦";
@@ -934,7 +949,7 @@ export default function POS() {
                     onClick={() => setSelectedCategory(cat)}
                     className={`flex flex-col items-center justify-center gap-1.5 px-5 py-3 rounded-xl font-semibold whitespace-nowrap transition-all duration-200 min-w-[90px] ${
                       isActive
-                        ? "bg-blue-600 text-white shadow-lg shadow-blue-500/50 transform scale-105"
+                        ? "cv-acid-chip-selected transform scale-105"
                         : "bg-white text-gray-700 hover:bg-blue-50 hover:border-blue-200 border-2 border-transparent"
                     }`}
                   >
@@ -953,7 +968,7 @@ export default function POS() {
                 <div
                   key={product.id}
                   onClick={() => addToCart(product)}
-                  className={`bg-white border-2 border-gray-200 rounded-lg cursor-pointer hover:border-blue-500 hover:shadow-lg transition-all transform hover:scale-105 active:scale-95 ${
+                  className={`cv-pos-product-card bg-white border-2 border-gray-200 rounded-lg cursor-pointer hover:border-blue-500 hover:shadow-lg transition-all transform hover:scale-105 active:scale-95 ${
                     systemPrefs.touchMode ? "p-4" : "p-3"
                   }`}
                 >
@@ -992,9 +1007,9 @@ export default function POS() {
         </div>
 
         {/* Right Side - Bill Panel */}
-        <div className="w-full xl:w-[24rem] xl:min-w-[24rem] bg-white flex flex-col border-t xl:border-t-0 xl:border-l border-gray-200">
+        <div className="cv-pos-bill-panel w-full xl:w-[24rem] xl:min-w-[24rem] bg-white flex flex-col border border-gray-200 rounded-xl shadow-sm overflow-hidden">
           {/* Bill Header */}
-          <div className="bg-blue-600 text-white px-4 py-3 border-b border-blue-700">
+          <div className="cv-acid-btn px-4 py-3 border-b border-lime-300/70">
             <div className="font-bold text-lg">Current Bill</div>
             {orderId && (
               <div className="text-sm opacity-90">Order #{orderId}</div>
@@ -1081,19 +1096,19 @@ export default function POS() {
               <div className="grid grid-cols-3 gap-2 pt-1">
                 <button
                   onClick={() => processPayment("CASH")}
-                  className="flex-1 py-3 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 transition-colors shadow-md text-sm"
+                  className="flex-1 py-3 cv-acid-btn rounded-lg font-bold transition-colors shadow-md text-sm"
                 >
                   💵 CASH
                 </button>
                 <button
                   onClick={() => processPayment("CARD")}
-                  className="flex-1 py-3 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition-colors shadow-md text-sm"
+                  className="flex-1 py-3 cv-acid-btn rounded-lg font-bold transition-colors shadow-md text-sm"
                 >
                   💳 CARD
                 </button>
                 <button
                   onClick={() => processPayment("QR")}
-                  className="flex-1 py-3 bg-purple-600 text-white rounded-lg font-bold hover:bg-purple-700 transition-colors shadow-md text-sm"
+                  className="flex-1 py-3 cv-acid-btn rounded-lg font-bold transition-colors shadow-md text-sm"
                 >
                   📱 QR
                 </button>
@@ -1101,13 +1116,13 @@ export default function POS() {
               <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={holdOrder}
-                  className="w-full py-2 bg-gray-600 text-white rounded-lg font-semibold hover:bg-gray-700 transition-colors shadow-md text-sm"
+                  className="w-full py-2 cv-acid-btn-soft rounded-lg font-semibold transition-colors shadow-md text-sm"
                 >
                   HOLD ORDER
                 </button>
                 <button
                   onClick={() => setShowHeldOrdersModal(true)}
-                  className="w-full py-2 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-colors shadow-md text-sm"
+                  className="w-full py-2 cv-acid-btn-soft rounded-lg font-semibold transition-colors shadow-md text-sm"
                 >
                   RECALL HELD
                 </button>
@@ -1128,7 +1143,7 @@ export default function POS() {
                 onClick={() => setShowHeldOrdersModal(false)}
                 className="text-gray-400 hover:text-gray-600 text-2xl"
               >
-                Ã—
+                {"\u00D7"}
               </button>
             </div>
 
@@ -1154,12 +1169,12 @@ export default function POS() {
                         <div className="flex items-start justify-between gap-2">
                           <div>
                             <div className="font-semibold text-gray-900">
-                              Held #{held.id} â€¢ {held.order_type || "DINE-IN"}
+                              Held #{held.id} • {held.order_type || "DINE-IN"}
                             </div>
                             <div className="text-xs text-gray-600 mt-1">
-                              {held.table_number ? `Table ${held.table_number} â€¢ ` : ""}
-                              {held.customer_name ? `${held.customer_name} â€¢ ` : ""}
-                              {itemCount} items â€¢ {createdAt}
+                              {held.table_number ? `Table ${held.table_number} • ` : ""}
+                              {held.customer_name ? `${held.customer_name} • ` : ""}
+                              {itemCount} items • {createdAt}
                             </div>
                             <div className="text-xs text-gray-500 mt-1">
                               Total approx: {formatCurrency(heldOrderTotal(held))}
@@ -1173,7 +1188,7 @@ export default function POS() {
                               className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${
                                 recalling || Boolean(heldActionBusyId)
                                   ? "bg-blue-300 text-white cursor-not-allowed"
-                                  : "bg-blue-600 text-white hover:bg-blue-700"
+                                  : "cv-acid-btn"
                               }`}
                             >
                               {recalling ? "Recalling..." : "Recall"}
@@ -1226,12 +1241,12 @@ export default function POS() {
             <div className="p-6">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-bold text-gray-900">Payment</h2>
-                <button
-                  onClick={() => setShowPaymentModal(false)}
-                  className="text-gray-400 hover:text-gray-600 text-2xl"
-                >
-                  Ã—
-                </button>
+              <button
+                onClick={() => setShowPaymentModal(false)}
+                className="text-gray-400 hover:text-gray-600 text-2xl"
+              >
+                  {"\u00D7"}
+              </button>
               </div>
 
               <div className="mb-6">
@@ -1377,7 +1392,7 @@ export default function POS() {
                       }}
                       className={`py-3 rounded-lg font-semibold transition-all ${
                         paymentMethod === method
-                          ? "bg-blue-600 text-white shadow-md"
+                          ? "cv-acid-chip-selected shadow-md"
                           : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                       }`}
                     >
@@ -1446,7 +1461,7 @@ export default function POS() {
                 className={`w-full py-4 rounded-lg font-bold text-lg transition-all ${
                   paymentMethod === "CASH" && (!cashGiven || balance < 0)
                     ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                    : "bg-green-600 text-white hover:bg-green-700 shadow-lg"
+                    : "cv-acid-btn shadow-lg"
                 }`}
               >
                 CONFIRM PAYMENT
@@ -1466,7 +1481,7 @@ export default function POS() {
                 <div className="flex gap-2">
                   <button
                     onClick={() => printReceipt(receiptData)}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                    className="px-4 py-2 cv-acid-btn rounded-lg font-medium transition-colors"
                   >
                     Print
                   </button>
@@ -1491,7 +1506,7 @@ export default function POS() {
 
       {/* Success/Error Message */}
       {message && (
-        <div className="fixed bottom-4 right-4 bg-blue-600 text-white px-6 py-3 rounded-lg shadow-xl z-50">
+        <div className="fixed bottom-4 right-4 cv-acid-btn px-6 py-3 rounded-lg shadow-xl z-50">
           {message}
         </div>
       )}
