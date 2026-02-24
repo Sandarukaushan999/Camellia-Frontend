@@ -418,12 +418,12 @@ export default function DashboardPage() {
   const cardLoading = isLoading || isLoadingDemo;
 
   return (
-    <div className="min-h-full bg-gradient-to-br from-slate-50 via-slate-50 to-slate-100 p-3 md:p-4 lg:p-5">
+    <div className="cv-page cv-page--dashboard min-h-full p-3 md:p-4 lg:p-5">
       <div className="mx-auto max-w-7xl space-y-4 lg:space-y-5">
-        <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white px-4 py-3 shadow-sm">
+        <header className="cv-page-header flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white px-4 py-3 shadow-sm">
           <div>
-            <h1 className="text-lg font-semibold text-slate-900">Operational Dashboard</h1>
-            <p className="text-sm text-slate-500">Sales, orders, inventory alerts, and quick actions</p>
+            <h1 className="cv-page-title text-lg font-semibold text-slate-900">Operational Dashboard</h1>
+            <p className="cv-page-subtitle text-sm text-slate-500">Sales, orders, inventory alerts, and quick actions</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {usingMockData && (

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import api from "../utils/api.js";
 
 const CATEGORIES = [
@@ -7,21 +7,68 @@ const CATEGORIES = [
   "Burger",
   "Submarine",
   "Juice",
-  "Café",
+  "Caf\u00E9",
   "Pizza",
 ];
 
 const CATEGORY_ICONS = {
-  Rice: "🍚",
-  Kottu: "🍜",
-  Burger: "🍔",
-  Submarine: "🥖",
-  Juice: "🥤",
-  Café: "☕",
-  Pizza: "🍕",
+  Rice: "\u{1F35A}",
+  Kottu: "\u{1F35C}",
+  Burger: "\u{1F354}",
+  Submarine: "\u{1F956}",
+  Juice: "\u{1F964}",
+  "Caf\u00E9": "\u2615",
+  Pizza: "\u{1F355}",
 };
 
+const MAX_UPLOAD_FILE_SIZE_BYTES = 5 * 1024 * 1024;
+const MAX_IMAGE_DATA_URL_LENGTH = 750_000;
+
+function optimizeImageToDataUrl(file, options = {}) {
+  const maxWidth = Number(options.maxWidth || 720);
+  const maxHeight = Number(options.maxHeight || 720);
+  const quality = Number(options.quality || 0.84);
+  const outputType = String(options.outputType || "image/jpeg");
+
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const image = new Image();
+
+    image.onload = () => {
+      try {
+        const scale = Math.min(maxWidth / image.width, maxHeight / image.height, 1);
+        const targetWidth = Math.max(1, Math.round(image.width * scale));
+        const targetHeight = Math.max(1, Math.round(image.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+        const context = canvas.getContext("2d");
+
+        if (!context) {
+          throw new Error("Canvas not supported");
+        }
+
+        context.drawImage(image, 0, 0, targetWidth, targetHeight);
+        const dataUrl = canvas.toDataURL(outputType, quality);
+        resolve(dataUrl);
+      } catch (error) {
+        reject(error);
+      } finally {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("Invalid image file"));
+    };
+
+    image.src = objectUrl;
+  });
+}
+
 export default function Products() {
+  const imageInputRef = useRef(null);
   const [products, setProducts] = useState([]);
   const [inventoryItems, setInventoryItems] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -37,11 +84,13 @@ export default function Products() {
     price: "",
     variants: [{ name: "", price: "" }],
     is_active: true,
+    image_url: "",
   });
   const [ingredients, setIngredients] = useState([{ inventory_item_id: "", quantity: "" }]);
   const [ingredientsForm, setIngredientsForm] = useState([{ inventory_item_id: "", quantity: "" }]);
   const [loadingIngredientsForm, setLoadingIngredientsForm] = useState(false);
   const [savingIngredientsForm, setSavingIngredientsForm] = useState(false);
+  const [imageUploadBusy, setImageUploadBusy] = useState(false);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -108,7 +157,11 @@ export default function Products() {
       price: "",
       variants: [{ name: "", price: "" }],
       is_active: true,
+      image_url: "",
     });
+    if (imageInputRef.current) {
+      imageInputRef.current.value = "";
+    }
     setIngredients([{ inventory_item_id: "", quantity: "" }]);
     await loadInventoryItems();
     setShowModal(true);
@@ -124,7 +177,11 @@ export default function Products() {
       price: product.price || "",
       variants: [{ name: "", price: "" }],
       is_active: product.is_active !== false,
+      image_url: String(product.image_url || ""),
     });
+    if (imageInputRef.current) {
+      imageInputRef.current.value = "";
+    }
     
     // Load product ingredients
     try {
@@ -144,6 +201,69 @@ export default function Products() {
     }
     
     setShowModal(true);
+  };
+
+  const clearProductImage = () => {
+    setForm((prev) => ({ ...prev, image_url: "" }));
+    if (imageInputRef.current) {
+      imageInputRef.current.value = "";
+    }
+  };
+
+  const handleImageSelection = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    if (!String(file.type || "").startsWith("image/")) {
+      setMessage("Please select a valid image file");
+      setTimeout(() => setMessage(""), 3000);
+      if (imageInputRef.current) {
+        imageInputRef.current.value = "";
+      }
+      return;
+    }
+
+    if (file.size > MAX_UPLOAD_FILE_SIZE_BYTES) {
+      setMessage("Image is too large. Max file size is 5MB.");
+      setTimeout(() => setMessage(""), 3000);
+      if (imageInputRef.current) {
+        imageInputRef.current.value = "";
+      }
+      return;
+    }
+
+    setImageUploadBusy(true);
+    try {
+      const outputType =
+        file.type === "image/png" || file.type === "image/webp"
+          ? file.type
+          : "image/jpeg";
+      const optimizedDataUrl = await optimizeImageToDataUrl(file, {
+        maxWidth: 720,
+        maxHeight: 720,
+        quality: 0.84,
+        outputType,
+      });
+
+      if (optimizedDataUrl.length > MAX_IMAGE_DATA_URL_LENGTH) {
+        setMessage("Image is still too large after optimization. Please choose a smaller image.");
+        setTimeout(() => setMessage(""), 3500);
+        return;
+      }
+
+      setForm((prev) => ({ ...prev, image_url: optimizedDataUrl }));
+    } catch (error) {
+      console.error("Image processing failed", error);
+      setMessage("Failed to process image. Please try another file.");
+      setTimeout(() => setMessage(""), 3500);
+    } finally {
+      setImageUploadBusy(false);
+      if (imageInputRef.current) {
+        imageInputRef.current.value = "";
+      }
+    }
   };
 
   const openIngredientsModal = async (product) => {
@@ -249,10 +369,11 @@ export default function Products() {
 
     try {
       const payload = {
-        name: form.name,
+        name: String(form.name || "").trim(),
         category: form.category,
         price: form.type === "simple" ? parseFloat(form.price) : null,
         is_active: form.is_active,
+        image_url: form.image_url || null,
       };
 
       let productId;
@@ -342,13 +463,13 @@ export default function Products() {
   };
 
   return (
-    <div className="p-4 md:p-6 bg-gray-50 min-h-screen">
+    <div className="cv-page cv-page--products p-4 md:p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+        <div className="cv-page-header flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Products (Menu)</h1>
-            <p className="text-gray-600 mt-1">Manage your menu items and pricing</p>
+            <h1 className="cv-page-title text-3xl font-bold text-gray-900">Products (Menu)</h1>
+            <p className="cv-page-subtitle text-gray-600 mt-1">Manage your menu items and pricing</p>
           </div>
           <button
             onClick={openAddModal}
@@ -448,8 +569,17 @@ export default function Products() {
                     <tr key={product.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="text-2xl">
-                            {CATEGORY_ICONS[product.category] || "📦"}
+                          <div className="h-12 w-12 overflow-hidden rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center text-2xl">
+                            {product.image_url ? (
+                              <img
+                                src={product.image_url}
+                                alt={product.name}
+                                className="h-full w-full object-cover"
+                                loading="lazy"
+                              />
+                            ) : (
+                              CATEGORY_ICONS[product.category] || "\u{1F4E6}"
+                            )}
                           </div>
                           <div>
                             <div className="font-semibold text-gray-900">{product.name}</div>
@@ -560,7 +690,7 @@ export default function Products() {
                   onClick={() => setShowModal(false)}
                   className="text-gray-400 hover:text-gray-600 text-2xl"
                 >
-                  ×
+                  {"\u00D7"}
                 </button>
               </div>
 
@@ -602,6 +732,53 @@ export default function Products() {
                         </option>
                       ))}
                     </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Product Image
+                    </label>
+                    <div className="flex flex-col sm:flex-row gap-4">
+                      <div className="h-24 w-24 overflow-hidden rounded-xl border border-gray-200 bg-gray-50 flex items-center justify-center text-3xl">
+                        {form.image_url ? (
+                          <img
+                            src={form.image_url}
+                            alt={form.name || "Product preview"}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          CATEGORY_ICONS[form.category] || "\u{1F4E6}"
+                        )}
+                      </div>
+                      <div className="flex-1 space-y-2">
+                        <input
+                          ref={imageInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleImageSelection}
+                          className="block w-full text-sm text-gray-600 file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                        />
+                        <p className="text-xs text-gray-500">
+                          Upload JPG, PNG, WEBP, or GIF. We auto-optimize for POS performance.
+                        </p>
+                        <div className="flex gap-2">
+                          {form.image_url && (
+                            <button
+                              type="button"
+                              onClick={clearProductImage}
+                              className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-red-200 text-red-600 hover:bg-red-50"
+                            >
+                              Remove Image
+                            </button>
+                          )}
+                          {imageUploadBusy && (
+                            <span className="text-xs text-blue-600 font-medium">
+                              Processing image...
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   <div>
@@ -775,9 +952,18 @@ export default function Products() {
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow-md"
+                    disabled={imageUploadBusy}
+                    className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-colors shadow-md ${
+                      imageUploadBusy
+                        ? "bg-blue-300 text-white cursor-not-allowed"
+                        : "bg-blue-600 text-white hover:bg-blue-700"
+                    }`}
                   >
-                    {editingProduct ? "Update Product" : "Create Product"}
+                    {imageUploadBusy
+                      ? "Processing Image..."
+                      : editingProduct
+                      ? "Update Product"
+                      : "Create Product"}
                   </button>
                 </div>
               </form>
@@ -803,7 +989,7 @@ export default function Products() {
                   className="text-gray-400 hover:text-gray-600 text-2xl"
                   type="button"
                 >
-                  x
+                  {"\u00D7"}
                 </button>
               </div>
 

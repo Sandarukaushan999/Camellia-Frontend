@@ -247,12 +247,12 @@ export default function Inventory() {
         }));
 
   return (
-    <div className="p-4 md:p-6 bg-gray-50 min-h-screen">
+    <div className="cv-page cv-page--inventory p-4 md:p-6">
       <div className="max-w-7xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
+        <div className="cv-page-header flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Inventory Management</h1>
-            <p className="text-sm text-gray-600 mt-1">
+            <h1 className="cv-page-title text-3xl font-bold text-gray-900">Inventory Management</h1>
+            <p className="cv-page-subtitle text-sm text-gray-600 mt-1">
               Manage inventory items (ingredients) and track stock levels
             </p>
           </div>

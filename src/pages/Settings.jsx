@@ -1,14 +1,15 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import api from "../utils/api.js";
+import { adminAPI, triggerDownload } from "../services/adminAPI.js";
 
 const SETTINGS_SECTIONS = [
-  { id: "shop", label: "Shop & Branch Info", icon: "SHOP" },
-  { id: "tax", label: "Tax & Service Charges", icon: "TAX" },
-  { id: "printer", label: "Printer & Devices", icon: "PRINT" },
-  { id: "backup", label: "Backup & Restore", icon: "BACKUP" },
-  { id: "security", label: "Security & Access", icon: "SEC" },
-  { id: "preferences", label: "System Preferences", icon: "PREF" },
+  { id: "shop", label: "Shop & Branch Info", icon: "🏬" },
+  { id: "tax", label: "Tax & Service Charges", icon: "🧾" },
+  { id: "printer", label: "Printer & Devices", icon: "🖨️" },
+  { id: "backup", label: "Backup & Restore", icon: "🗄️" },
+  { id: "security", label: "Security & Access", icon: "🛡️" },
+  { id: "preferences", label: "System Preferences", icon: "⚙️" },
 ];
 
 const DEFAULT_PRINTER_SETTINGS = {
@@ -179,11 +180,12 @@ export default function Settings() {
 
   const handleBackup = async () => {
     try {
-      const { data } = await api.post("/admin/backup");
-      setMessage(data.message || "Backup created successfully");
+      const { blob, fileName } = await adminAPI.downloadBackup();
+      triggerDownload(blob, fileName);
+      setMessage("Backup downloaded successfully");
       setTimeout(() => setMessage(""), 3000);
-    } catch {
-      setMessage("Backup failed");
+    } catch (err) {
+      setMessage(err?.response?.data?.message || "Backup failed");
       setTimeout(() => setMessage(""), 3000);
     }
   };
@@ -199,15 +201,11 @@ export default function Settings() {
     }
 
     try {
-      const formData = new FormData();
-      formData.append("file", backupFile);
-      const { data } = await api.post("/admin/restore", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      const data = await adminAPI.restoreFromBackup(backupFile);
       setMessage(data.message || "Restore completed successfully");
       setTimeout(() => setMessage(""), 3000);
-    } catch {
-      setMessage("Restore failed");
+    } catch (err) {
+      setMessage(err?.response?.data?.message || "Restore failed");
       setTimeout(() => setMessage(""), 3000);
     }
   };
@@ -286,12 +284,12 @@ export default function Settings() {
   const example = calculateExample();
 
   return (
-    <div className="p-4 md:p-6 bg-gray-50 min-h-screen">
+    <div className="cv-page cv-page--settings p-4 md:p-6">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-          <p className="text-sm text-gray-600 mt-1">Configure your POS system</p>
+        <div className="cv-page-header mb-6">
+          <h1 className="cv-page-title text-2xl font-bold text-gray-900">Settings</h1>
+          <p className="cv-page-subtitle text-sm text-gray-600 mt-1">Configure your POS system</p>
         </div>
 
         <div className="flex flex-col lg:flex-row gap-6">
@@ -321,7 +319,7 @@ export default function Settings() {
             {activeSection === "shop" && (
               <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
                 <h2 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-                  <span>SHOP</span> Shop & Branch Info
+                  <span>🏬</span> Shop & Branch Info
                 </h2>
                 <div className="space-y-4">
                   <div>
@@ -409,7 +407,7 @@ export default function Settings() {
             {activeSection === "tax" && (
               <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
                 <h2 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-                  <span>TAX</span> Tax & Service Charges
+                  <span>🧾</span> Tax & Service Charges
                 </h2>
                 <div className="space-y-6">
                   {/* Tax Settings */}
@@ -544,7 +542,7 @@ export default function Settings() {
             {activeSection === "printer" && (
               <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
                 <h2 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-                  <span>PRINT</span> Printer & Devices
+                  <span>🖨️</span> Printer & Devices
                 </h2>
                 <div className="space-y-6">
                   <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
@@ -692,7 +690,7 @@ export default function Settings() {
             {activeSection === "backup" && (
               <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
                 <h2 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-                  <span>BACKUP</span> Backup & Restore
+                  <span>🗄️</span> Backup & Restore
                 </h2>
                 <div className="space-y-6">
                   <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
@@ -731,7 +729,7 @@ export default function Settings() {
                     <div className="flex-1">
                       <input
                         type="file"
-                        accept=".sql,.backup"
+                        accept=".csv,text/csv"
                         onChange={(e) => setBackupFile(e.target.files?.[0])}
                         className="hidden"
                         id="restore-file"
@@ -766,7 +764,7 @@ export default function Settings() {
             {activeSection === "security" && (
               <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
                 <h2 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-                  <span>SEC</span> Security & Access
+                  <span>🛡️</span> Security & Access
                 </h2>
                 <div className="space-y-6">
                   <div>
@@ -810,7 +808,7 @@ export default function Settings() {
             {activeSection === "preferences" && (
               <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
                 <h2 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-                  <span>PREF</span> System Preferences
+                  <span>⚙️</span> System Preferences
                 </h2>
                 <div className="space-y-6">
                   <div>

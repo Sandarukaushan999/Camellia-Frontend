@@ -105,6 +105,14 @@ export default function App() {
           }
         />
         <Route
+          path="orders/:id"
+          element={
+            <ProtectedRoute roles={["ADMIN", "CASHIER"]}>
+              <POS />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="products"
           element={
             <ProtectedRoute roles={["ADMIN"]}>
@@ -150,4 +158,3 @@ export default function App() {
     </Routes>
   );
 }
-

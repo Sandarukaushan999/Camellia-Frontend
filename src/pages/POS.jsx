@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+﻿import React, { useCallback, useEffect, useMemo, useState } from "react";
 import api from "../utils/api.js";
 import Receipt from "../components/Receipt.jsx";
 import ReceiptPreview from "../components/ReceiptPreview.jsx";
@@ -10,20 +10,22 @@ const CATEGORY_ICONS = {
   Kottu: "🍜",
   Submarine: "🥖",
   Café: "☕",
+  Juice: "🥤",
   Rice: "🍚",
   Pizza: "🍕",
 };
 
-// Default categories to always show
 const DEFAULT_CATEGORIES = [
   "ALL",
   "Burger",
   "Kottu",
   "Submarine",
   "Café",
+  "Juice",
   "Rice",
   "Pizza",
 ];
+
 
 const DEFAULT_PRINTER_SETTINGS = {
   autoPrint: true,
@@ -68,6 +70,10 @@ export default function POS() {
   const [paymentMethod, setPaymentMethod] = useState("CASH");
   const [cashGiven, setCashGiven] = useState("");
   const [orderId, setOrderId] = useState(null);
+  const [heldOrders, setHeldOrders] = useState([]);
+  const [showHeldOrdersModal, setShowHeldOrdersModal] = useState(false);
+  const [heldOrdersLoading, setHeldOrdersLoading] = useState(false);
+  const [heldActionBusyId, setHeldActionBusyId] = useState(null);
   const [message, setMessage] = useState("");
   const [showReceipt, setShowReceipt] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
@@ -103,6 +109,19 @@ export default function POS() {
     }
   }, []);
 
+  const loadHeldOrders = useCallback(async () => {
+    try {
+      setHeldOrdersLoading(true);
+      const { data } = await api.get("/orders/held", { params: { limit: 100 } });
+      setHeldOrders(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("Failed to load held orders", err);
+      setHeldOrders([]);
+    } finally {
+      setHeldOrdersLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadProducts();
 
@@ -129,6 +148,13 @@ export default function POS() {
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [loadProducts]);
+
+  useEffect(() => {
+    if (!showHeldOrdersModal) {
+      return;
+    }
+    loadHeldOrders();
+  }, [showHeldOrdersModal, loadHeldOrders]);
 
   // Load system preferences (default order type, sound, touch mode)
   useEffect(() => {
@@ -192,24 +218,32 @@ export default function POS() {
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
-  // Only show these specific categories - no dynamic categories from products
   const categories = useMemo(() => {
-    return DEFAULT_CATEGORIES;
-  }, []);
+    const productCategories = Array.isArray(products)
+      ? [...new Set(products.map((p) => String(p.category || "").trim()).filter(Boolean))]
+      : [];
+    const defaults = DEFAULT_CATEGORIES.filter((c) => c !== "ALL");
+    const extras = productCategories.filter((c) => !defaults.includes(c));
+    return ["ALL", ...defaults, ...extras];
+  }, [products]);
 
-  // Filter products by category - only show products in allowed categories
-  const allowedCategories = ["Burger", "Kottu", "Submarine", "Café", "Rice", "Pizza"];
   const filteredProducts = useMemo(() => {
-    // First, filter to only show products in allowed categories
-    const allowedProducts = products.filter(
-      (p) => p.category && allowedCategories.includes(p.category)
-    );
-    
-    if (selectedCategory === "ALL") {
-      return allowedProducts;
+    if (!Array.isArray(products)) {
+      return [];
     }
-    return allowedProducts.filter((p) => p.category === selectedCategory);
+    if (selectedCategory === "ALL") {
+      return products;
+    }
+    return products.filter((product) => String(product.category || "").trim() === selectedCategory);
   }, [products, selectedCategory]);
+
+  useEffect(() => {
+    if (!categories.includes(selectedCategory)) {
+      setSelectedCategory("ALL");
+    }
+  }, [categories, selectedCategory]);
+
+
 
   const playAddSound = () => {
     if (!systemPrefs.enableSound) return;
@@ -517,28 +551,124 @@ export default function POS() {
   };
 
   // Hold order
-  const holdOrder = () => {
+  const holdOrder = async () => {
     if (cart.length === 0) {
       setMessage("Cart is empty");
       setTimeout(() => setMessage(""), 2000);
       return;
     }
-    // In a real system, save to localStorage or backend
-    const heldOrder = {
-      id: generateOrderId(),
-      orderType,
-      tableNumber,
-      items: cart,
-      totals,
-      timestamp: new Date().toISOString(),
-    };
-    localStorage.setItem(`held_order_${heldOrder.id}`, JSON.stringify(heldOrder));
-    setMessage(`Order #${heldOrder.id} held`);
-    setTimeout(() => {
-      setMessage("");
+    try {
+      const normalizedPhone = normalizePhone(customerPhone);
+      const payload = {
+        order_type: orderType,
+        table_number: tableNumber || null,
+        customer_name: String(crmCustomerName || customerName || "").trim() || null,
+        customer_phone: normalizedPhone || null,
+        items: cart.map((item) => ({
+          product_id: item.id,
+          name: item.name,
+          qty: item.qty,
+          price: item.price,
+          category: item.category || null,
+        })),
+        meta: {
+          payment_method: paymentMethod,
+          discount_type: discountType,
+          discount_value: discountValue || 0,
+        },
+      };
+
+      const { data } = await api.post("/orders/held", payload);
+      setMessage(`Order #${data.id} held`);
+      setOrderId(null);
       setCart([]);
       setTableNumber("");
-    }, 2000);
+      setCustomerName("");
+      setCustomerPhone("");
+      setCrmCustomerName("");
+      clearSelectedCustomer();
+
+      if (showHeldOrdersModal) {
+        loadHeldOrders();
+      }
+      setTimeout(() => setMessage(""), 2200);
+    } catch (err) {
+      setMessage(err.response?.data?.message || "Failed to hold order");
+      setTimeout(() => setMessage(""), 3000);
+    }
+  };
+
+  const heldOrderTotal = (heldOrder) => {
+    if (!Array.isArray(heldOrder?.items)) {
+      return 0;
+    }
+    return heldOrder.items.reduce((sum, item) => {
+      const qty = parseFloat(item?.qty || 0);
+      const price = parseFloat(item?.price || 0);
+      if (!Number.isFinite(qty) || !Number.isFinite(price)) {
+        return sum;
+      }
+      return sum + qty * price;
+    }, 0);
+  };
+
+  const recallHeldOrder = async (heldId) => {
+    setHeldActionBusyId(`recall-${heldId}`);
+    try {
+      const { data } = await api.post(`/orders/held/${heldId}/recall`);
+      const heldOrder = data?.held_order;
+      const heldItems = Array.isArray(heldOrder?.items) ? heldOrder.items : [];
+      if (heldItems.length === 0) {
+        setMessage("Held order has no items");
+        setTimeout(() => setMessage(""), 2500);
+        return;
+      }
+
+      clearSelectedCustomer();
+      setCart(
+        heldItems.map((item) => ({
+          id: item.product_id,
+          name: item.name,
+          qty: parseFloat(item.qty) || 1,
+          price: parseFloat(item.price) || 0,
+          category: item.category || null,
+        }))
+      );
+      setOrderType(heldOrder.order_type || "DINE-IN");
+      setTableNumber(heldOrder.table_number || "");
+      setCustomerName(heldOrder.customer_name || "");
+      setCrmCustomerName(heldOrder.customer_name || "");
+      setCustomerPhone(heldOrder.customer_phone || "");
+      setOrderId(heldOrder.id || null);
+      setShowHeldOrdersModal(false);
+      setMessage(`Held order #${heldId} recalled`);
+      setTimeout(() => setMessage(""), 2600);
+    } catch (err) {
+      setMessage(err.response?.data?.message || "Failed to recall held order");
+      setTimeout(() => setMessage(""), 3000);
+      await loadHeldOrders();
+    } finally {
+      setHeldActionBusyId(null);
+    }
+  };
+
+  const deleteHeldOrder = async (heldId) => {
+    if (!window.confirm(`Delete held order #${heldId}?`)) {
+      return;
+    }
+
+    setHeldActionBusyId(`delete-${heldId}`);
+    try {
+      await api.delete(`/orders/held/${heldId}`);
+      await loadHeldOrders();
+      setMessage(`Held order #${heldId} deleted`);
+      setTimeout(() => setMessage(""), 2300);
+    } catch (err) {
+      setMessage(err.response?.data?.message || "Failed to delete held order");
+      setTimeout(() => setMessage(""), 3000);
+    } finally {
+      setHeldActionBusyId(null);
+    }
   };
 
   // Open payment modal
@@ -743,7 +873,7 @@ export default function POS() {
   }, [cashGiven, totals.total, paymentMethod]);
 
   return (
-    <div className="h-full min-h-full flex flex-col bg-gray-50">
+    <div className="cv-page cv-page--pos h-full min-h-full flex flex-col">
       {/* Header - Order Type Selector */}
       <div className="bg-white border-b border-gray-200 px-4 py-3">
         <div className="flex items-center gap-3 flex-wrap">
@@ -828,8 +958,19 @@ export default function POS() {
                   }`}
                 >
                   <div className="text-center mb-2">
-                    <div className="text-3xl mb-2">
-                      {CATEGORY_ICONS[product.category] || "📦"}
+                    <div className="mb-2 rounded-lg overflow-hidden border border-gray-200 bg-gray-50">
+                      {product.image_url ? (
+                        <img
+                          src={product.image_url}
+                          alt={product.name}
+                          className="w-full h-20 object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="h-20 flex items-center justify-center text-3xl">
+                          {CATEGORY_ICONS[product.category] || "📦"}
+                        </div>
+                      )}
                     </div>
                     <div className="font-semibold text-sm text-gray-900 mb-1 line-clamp-2">
                       {product.name}
@@ -957,16 +1098,126 @@ export default function POS() {
                   📱 QR
                 </button>
               </div>
-              <button
-                onClick={holdOrder}
-                className="w-full py-2 bg-gray-600 text-white rounded-lg font-semibold hover:bg-gray-700 transition-colors shadow-md text-sm"
-              >
-                HOLD ORDER
-              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={holdOrder}
+                  className="w-full py-2 bg-gray-600 text-white rounded-lg font-semibold hover:bg-gray-700 transition-colors shadow-md text-sm"
+                >
+                  HOLD ORDER
+                </button>
+                <button
+                  onClick={() => setShowHeldOrdersModal(true)}
+                  className="w-full py-2 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-colors shadow-md text-sm"
+                >
+                  RECALL HELD
+                </button>
+              </div>
             </div>
           )}
         </div>
       </div>
+
+      {/* Held Orders Modal */}
+      {showHeldOrdersModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+            <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-gray-900">Held Orders</h2>
+              <button
+                type="button"
+                onClick={() => setShowHeldOrdersModal(false)}
+                className="text-gray-400 hover:text-gray-600 text-2xl"
+              >
+                Ã—
+              </button>
+            </div>
+
+            <div className="p-4 overflow-y-auto">
+              {heldOrdersLoading ? (
+                <div className="py-10 text-center text-gray-500">Loading held orders...</div>
+              ) : heldOrders.length === 0 ? (
+                <div className="py-10 text-center text-gray-500">No held orders found</div>
+              ) : (
+                <div className="space-y-3">
+                  {heldOrders.map((held) => {
+                    const createdAt = held.created_at
+                      ? new Date(held.created_at).toLocaleString()
+                      : "-";
+                    const itemCount = Array.isArray(held.items) ? held.items.length : 0;
+                    const recalling = heldActionBusyId === `recall-${held.id}`;
+                    const deleting = heldActionBusyId === `delete-${held.id}`;
+                    return (
+                      <div
+                        key={held.id}
+                        className="border border-gray-200 rounded-lg p-3 bg-gray-50"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="font-semibold text-gray-900">
+                              Held #{held.id} â€¢ {held.order_type || "DINE-IN"}
+                            </div>
+                            <div className="text-xs text-gray-600 mt-1">
+                              {held.table_number ? `Table ${held.table_number} â€¢ ` : ""}
+                              {held.customer_name ? `${held.customer_name} â€¢ ` : ""}
+                              {itemCount} items â€¢ {createdAt}
+                            </div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              Total approx: {formatCurrency(heldOrderTotal(held))}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={Boolean(heldActionBusyId)}
+                              onClick={() => recallHeldOrder(held.id)}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${
+                                recalling || Boolean(heldActionBusyId)
+                                  ? "bg-blue-300 text-white cursor-not-allowed"
+                                  : "bg-blue-600 text-white hover:bg-blue-700"
+                              }`}
+                            >
+                              {recalling ? "Recalling..." : "Recall"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={Boolean(heldActionBusyId)}
+                              onClick={() => deleteHeldOrder(held.id)}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${
+                                deleting || Boolean(heldActionBusyId)
+                                  ? "bg-red-300 text-white cursor-not-allowed"
+                                  : "bg-red-600 text-white hover:bg-red-700"
+                              }`}
+                            >
+                              {deleting ? "Deleting..." : "Delete"}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="px-5 py-3 border-t border-gray-200 bg-gray-50 flex justify-between">
+              <button
+                type="button"
+                onClick={loadHeldOrders}
+                className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-100"
+              >
+                Refresh
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowHeldOrdersModal(false)}
+                className="px-4 py-2 bg-gray-700 text-white rounded-lg text-sm font-semibold hover:bg-gray-800"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Payment Modal */}
       {showPaymentModal && (
@@ -979,7 +1230,7 @@ export default function POS() {
                   onClick={() => setShowPaymentModal(false)}
                   className="text-gray-400 hover:text-gray-600 text-2xl"
                 >
-                  ×
+                  Ã—
                 </button>
               </div>
 
@@ -1247,3 +1498,4 @@ export default function POS() {
     </div>
   );
 }
+

@@ -294,11 +294,11 @@ export default function CRM() {
       .filter((v) => Number.isFinite(v));
 
   return (
-    <div className="p-4 md:p-6 bg-gray-50 min-h-screen">
+    <div className="cv-page cv-page--crm p-4 md:p-6">
       <div className="max-w-7xl mx-auto space-y-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">CRM</h1>
-          <p className="text-sm text-gray-600">Customer 360, segments, campaigns, loyalty analytics</p>
+        <div className="cv-page-header">
+          <h1 className="cv-page-title text-2xl font-bold text-gray-900">CRM</h1>
+          <p className="cv-page-subtitle text-sm text-gray-600">Customer 360, segments, campaigns, loyalty analytics</p>
         </div>
 
         <div className="bg-white border rounded-xl p-2 flex flex-wrap gap-2">

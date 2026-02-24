@@ -68,18 +68,18 @@ export function Footer() {
   }, [showResetCodeField]);
 
   return (
-    <footer className="bg-gray-900 border-t border-gray-700">
+    <footer className="cv-footer border-t">
       <div className="max-w-7xl mx-auto px-3 py-2">
         <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-sm">
-          <div className="text-gray-300 text-center md:text-left">
-            (c) 2026 <span className="font-semibold text-white">VOXOsolution</span>. All rights
+          <div className="text-slate-600 text-center md:text-left">
+            (c) 2026 <span className="font-semibold text-slate-900">VOXOsolution</span>. All rights
             reserved
           </div>
 
           <div className="flex items-center gap-5">
             <a
               href={`mailto:${email}`}
-              className="p-2 rounded-full text-gray-300 hover:text-white hover:bg-gray-800 transition"
+              className="p-2 rounded-full text-slate-500 hover:text-slate-900 hover:bg-slate-200/70 transition"
               aria-label="Email VOXOsolution"
             >
               <EnvelopeIcon className="w-5 h-5" />
@@ -89,7 +89,7 @@ export function Footer() {
               <button
                 type="button"
                 onClick={() => setShowSettings(true)}
-                className="p-2 rounded-full text-gray-300 hover:text-white hover:bg-gray-800 transition"
+                className="p-2 rounded-full text-slate-500 hover:text-slate-900 hover:bg-slate-200/70 transition"
                 aria-label="Open admin settings"
               >
                 <Cog6ToothIcon className="w-5 h-5" />
@@ -100,15 +100,15 @@ export function Footer() {
               href={whatsappUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="p-2 rounded-full text-gray-300 hover:text-white hover:bg-gray-800 transition"
+              className="p-2 rounded-full text-slate-500 hover:text-slate-900 hover:bg-slate-200/70 transition"
               aria-label="Open WhatsApp support"
             >
               <ChatBubbleLeftRightIcon className="w-5 h-5" />
             </a>
           </div>
 
-          <div className="text-gray-400 text-center md:text-right">
-            Powered by <span className="font-medium text-gray-200">VOXOsolution</span>
+          <div className="text-slate-500 text-center md:text-right">
+            Powered by <span className="font-medium text-slate-700">VOXOsolution</span>
           </div>
         </div>
       </div>
