@@ -3,10 +3,16 @@ import api from "../utils/api.js";
 
 export default function Inventory() {
   const [inventoryItems, setInventoryItems] = useState([]);
+  const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [showModal, setShowModal] = useState(false);
+  const [showProductLinksModal, setShowProductLinksModal] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
+  const [linkingItem, setLinkingItem] = useState(null);
+  const [productLinks, setProductLinks] = useState([]);
+  const [loadingProductLinks, setLoadingProductLinks] = useState(false);
+  const [savingProductLinks, setSavingProductLinks] = useState(false);
   const [form, setForm] = useState({
     name: "",
     unit: "g",
@@ -31,8 +37,19 @@ export default function Inventory() {
     }
   };
 
+  const loadProducts = async () => {
+    try {
+      const { data } = await api.get("/admin/products");
+      setProducts(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("Failed to load products for ingredient mapping", err);
+      setProducts([]);
+    }
+  };
+
   useEffect(() => {
     load();
+    loadProducts();
   }, []);
 
   const openAddModal = () => {
@@ -59,6 +76,85 @@ export default function Inventory() {
       category: item.category || "",
     });
     setShowModal(true);
+  };
+
+  const openProductLinksModal = async (item) => {
+    setLinkingItem(item);
+    setShowProductLinksModal(true);
+    setLoadingProductLinks(true);
+    setProductLinks(
+      products.map((product) => ({
+        id: product.id,
+        name: product.name,
+        category: product.category,
+        is_active: product.is_active,
+        quantity: 0,
+      }))
+    );
+
+    try {
+      const { data } = await api.get(`/inventory/items/${item.id}/product-links`);
+      setProductLinks(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("Failed to load product links for inventory item", err);
+      setMessage("Failed to load product links");
+      setProductLinks([]);
+      setTimeout(() => setMessage(""), 3000);
+    } finally {
+      setLoadingProductLinks(false);
+    }
+  };
+
+  const closeProductLinksModal = () => {
+    setShowProductLinksModal(false);
+    setLinkingItem(null);
+    setProductLinks([]);
+    setLoadingProductLinks(false);
+    setSavingProductLinks(false);
+  };
+
+  const updateProductLinkQuantity = (productId, value) => {
+    const quantity = value === "" ? "" : parseFloat(value);
+    setProductLinks((prev) =>
+      prev.map((link) =>
+        link.id === productId
+          ? { ...link, quantity: Number.isFinite(quantity) || value === "" ? value : link.quantity }
+          : link
+      )
+    );
+  };
+
+  const saveProductLinks = async (e) => {
+    e.preventDefault();
+    if (!linkingItem) {
+      return;
+    }
+
+    setSavingProductLinks(true);
+    try {
+      const linksPayload = productLinks
+        .map((link) => ({
+          product_id: String(link.id),
+          quantity: parseFloat(link.quantity),
+        }))
+        .filter(
+          (link) => link.product_id.length > 0 && Number.isFinite(link.quantity) && link.quantity > 0
+        );
+
+      await api.post(`/inventory/items/${linkingItem.id}/product-links`, {
+        links: linksPayload,
+      });
+
+      setMessage(`Product usage updated for ${linkingItem.name}`);
+      closeProductLinksModal();
+      setTimeout(() => setMessage(""), 3000);
+    } catch (err) {
+      console.error("Failed to save product links", err);
+      setMessage(err.response?.data?.message || "Failed to save product links");
+      setTimeout(() => setMessage(""), 3000);
+    } finally {
+      setSavingProductLinks(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -138,6 +234,17 @@ export default function Inventory() {
     if (diffDays <= 3) return { label: "Expires Soon", color: "orange" };
     return null;
   };
+
+  const productsForLinking =
+    productLinks.length > 0
+      ? productLinks
+      : products.map((product) => ({
+          id: product.id,
+          name: product.name,
+          category: product.category,
+          is_active: product.is_active,
+          quantity: 0,
+        }));
 
   return (
     <div className="p-4 md:p-6 bg-gray-50 min-h-screen">
@@ -252,6 +359,13 @@ export default function Inventory() {
                         </td>
                         <td className="px-6 py-4 text-right">
                           <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => openProductLinksModal(item)}
+                              className="px-2.5 py-2 text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors text-xs font-semibold border border-emerald-100"
+                              title="Assign to products"
+                            >
+                              Use In Products
+                            </button>
                             <button
                               onClick={() => openEditModal(item)}
                               className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -438,6 +552,112 @@ export default function Inventory() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Product Usage Modal */}
+      {showProductLinksModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">Use Ingredient In Products</h2>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {linkingItem ? `${linkingItem.name} (${linkingItem.unit})` : "Inventory item"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeProductLinksModal}
+                  className="text-gray-400 hover:text-gray-600 text-2xl"
+                >
+                  x
+                </button>
+              </div>
+
+              {loadingProductLinks ? (
+                <div className="py-12 text-center text-gray-500">Loading products...</div>
+              ) : (
+                <form onSubmit={saveProductLinks}>
+                  <p className="text-xs text-gray-500 mb-4">
+                    Enter how much of this ingredient is used for one unit of each product. Leave blank or 0 for products that do not use this ingredient.
+                  </p>
+
+                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
+                            Product
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
+                            Category
+                          </th>
+                          <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">
+                            Quantity ({linkingItem?.unit || "unit"})
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {productsForLinking.length === 0 ? (
+                          <tr>
+                            <td colSpan={3} className="px-4 py-8 text-center text-gray-500">
+                              No products found.
+                            </td>
+                          </tr>
+                        ) : (
+                          productsForLinking.map((product) => (
+                            <tr key={product.id}>
+                              <td className="px-4 py-3">
+                                <div className="font-medium text-gray-900">{product.name}</div>
+                                <div className="text-xs text-gray-500">ID: {product.id}</div>
+                              </td>
+                              <td className="px-4 py-3 text-gray-700">{product.category || "-"}</td>
+                              <td className="px-4 py-3 text-right">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={product.quantity ?? ""}
+                                  onChange={(e) =>
+                                    updateProductLinkQuantity(product.id, e.target.value)
+                                  }
+                                  className="w-32 px-3 py-2 border border-gray-300 rounded-lg text-right text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  placeholder="0.00"
+                                />
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="flex gap-3 pt-4 border-t border-gray-200 mt-4">
+                    <button
+                      type="button"
+                      onClick={closeProductLinksModal}
+                      className="flex-1 px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={savingProductLinks}
+                      className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-colors shadow-md ${
+                        savingProductLinks
+                          ? "bg-blue-300 text-white cursor-not-allowed"
+                          : "bg-blue-600 text-white hover:bg-blue-700"
+                      }`}
+                    >
+                      {savingProductLinks ? "Saving..." : "Save Product Usage"}
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
           </div>
         </div>

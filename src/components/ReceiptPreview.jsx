@@ -14,6 +14,9 @@ export default function ReceiptPreview({ orderData }) {
     tax = 0,
     taxPercent = 2,
     discount = 0,
+    manualDiscount = 0,
+    loyaltyDiscount = 0,
+    loyaltyPointsRedeemed = 0,
     discountPercent = 0,
     total = 0,
     orderType = "DINE-IN",
@@ -267,11 +270,25 @@ export default function ReceiptPreview({ orderData }) {
               <span>{formatCurrency(tax)}</span>
             </div>
           )}
-          {discount > 0 && (
+          {manualDiscount > 0 && (
             <div className="receipt-preview-total-row">
               <span>
-                Discount{discountPercent > 0 ? ` (${discountPercent}%)` : ""}
+                Manual Discount{discountPercent > 0 ? ` (${discountPercent}%)` : ""}
               </span>
+              <span>- {formatCurrency(manualDiscount)}</span>
+            </div>
+          )}
+          {loyaltyDiscount > 0 && (
+            <div className="receipt-preview-total-row">
+              <span>
+                Loyalty Redeem{loyaltyPointsRedeemed > 0 ? ` (${loyaltyPointsRedeemed} pts)` : ""}
+              </span>
+              <span>- {formatCurrency(loyaltyDiscount)}</span>
+            </div>
+          )}
+          {discount > 0 && manualDiscount <= 0 && loyaltyDiscount <= 0 && (
+            <div className="receipt-preview-total-row">
+              <span>Discount</span>
               <span>- {formatCurrency(discount)}</span>
             </div>
           )}
@@ -296,4 +313,3 @@ export default function ReceiptPreview({ orderData }) {
     </>
   );
 }
-

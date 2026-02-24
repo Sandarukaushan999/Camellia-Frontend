@@ -1,19 +1,52 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import api from "../utils/api.js";
 
 const SETTINGS_SECTIONS = [
-  { id: "shop", label: "Shop & Branch Info", icon: "🏪" },
-  { id: "tax", label: "Tax & Service Charges", icon: "💰" },
-  { id: "printer", label: "Printer & Devices", icon: "🖨" },
-  { id: "backup", label: "Backup & Restore", icon: "💾" },
-  { id: "security", label: "Security & Access", icon: "🔐" },
-  { id: "preferences", label: "System Preferences", icon: "⚙️" },
+  { id: "shop", label: "Shop & Branch Info", icon: "SHOP" },
+  { id: "tax", label: "Tax & Service Charges", icon: "TAX" },
+  { id: "printer", label: "Printer & Devices", icon: "PRINT" },
+  { id: "backup", label: "Backup & Restore", icon: "BACKUP" },
+  { id: "security", label: "Security & Access", icon: "SEC" },
+  { id: "preferences", label: "System Preferences", icon: "PREF" },
 ];
 
+const DEFAULT_PRINTER_SETTINGS = {
+  printerType: "thermal",
+  paperSize: "80mm",
+  autoPrint: true,
+  printMode: "ESC_POS_TCP",
+  model: "XPrinter XP-K200L",
+  host: "",
+  port: 9100,
+  charsPerLine: 48,
+  timeoutMs: 4000,
+};
+
 export default function Settings() {
-  const [activeSection, setActiveSection] = useState("shop");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const validSectionIds = useMemo(
+    () => new Set(SETTINGS_SECTIONS.map((section) => section.id)),
+    []
+  );
+  const sectionFromQuery = searchParams.get("section");
+  const [activeSection, setActiveSection] = useState(
+    validSectionIds.has(sectionFromQuery) ? sectionFromQuery : "shop"
+  );
   const [message, setMessage] = useState("");
   const [hasChanges, setHasChanges] = useState(false);
+
+  useEffect(() => {
+    const nextSection = searchParams.get("section");
+    if (validSectionIds.has(nextSection)) {
+      setActiveSection(nextSection);
+    }
+  }, [searchParams, validSectionIds]);
+
+  const handleSectionChange = (sectionId) => {
+    setActiveSection(sectionId);
+    setSearchParams({ section: sectionId }, { replace: true });
+  };
 
   // Shop Info State
   const [shopInfo, setShopInfo] = useState(() => {
@@ -22,7 +55,7 @@ export default function Settings() {
       const saved = localStorage.getItem("cv_shop_info");
       if (saved) {
         return {
-          name: "Camellia Café & Restaurant",
+          name: "Camellia Cafe & Restaurant",
           address: "",
           phone: "",
           email: "",
@@ -34,7 +67,7 @@ export default function Settings() {
       // ignore parse errors and fall back to defaults
     }
     return {
-      name: "Camellia Café & Restaurant",
+      name: "Camellia Cafe & Restaurant",
       address: "",
       phone: "",
       email: "",
@@ -63,10 +96,16 @@ export default function Settings() {
   });
 
   // Printer Settings
-  const [printerSettings, setPrinterSettings] = useState({
-    printerType: "thermal",
-    paperSize: "80mm",
-    autoPrint: true,
+  const [printerSettings, setPrinterSettings] = useState(() => {
+    try {
+      const saved = localStorage.getItem("cv_printer_settings");
+      if (saved) {
+        return { ...DEFAULT_PRINTER_SETTINGS, ...JSON.parse(saved) };
+      }
+    } catch {
+      // ignore parse errors
+    }
+    return { ...DEFAULT_PRINTER_SETTINGS };
   });
 
   // System Preferences
@@ -124,6 +163,14 @@ export default function Settings() {
       // ignore storage errors
     }
 
+    // Persist printer settings used by POS checkout
+    try {
+      localStorage.setItem("cv_printer_settings", JSON.stringify(printerSettings));
+      localStorage.setItem("cv_printer_settings_updated_at", String(Date.now()));
+    } catch {
+      // ignore storage errors
+    }
+
     setMessage("Settings saved successfully");
     setHasChanges(false);
     setTimeout(() => setMessage(""), 3000);
@@ -165,9 +212,64 @@ export default function Settings() {
     }
   };
 
-  const handleTestPrint = () => {
-    setMessage("Test receipt sent to printer");
-    setTimeout(() => setMessage(""), 3000);
+  const handleTestPrint = async () => {
+    if (printerSettings.printMode !== "ESC_POS_TCP") {
+      setMessage("Print mode is Browser. Switch to ESC/POS TCP for direct thermal print.");
+      setTimeout(() => setMessage(""), 3500);
+      return;
+    }
+
+    const printerHost = String(printerSettings.host || "").trim();
+    if (!printerHost) {
+      setMessage("Printer host/IP is required for ESC/POS TCP mode.");
+      setTimeout(() => setMessage(""), 3500);
+      return;
+    }
+
+    try {
+      const now = new Date();
+      await api.post("/printing/escpos", {
+        printer: {
+          host: printerHost,
+          port: Number(printerSettings.port) || 9100,
+          paperSize: printerSettings.paperSize || "80mm",
+          charsPerLine: Number(printerSettings.charsPerLine) || 48,
+          timeoutMs: Number(printerSettings.timeoutMs) || 4000,
+        },
+        receipt: {
+          billNo: "TEST",
+          date: now.toISOString().slice(0, 10),
+          time: now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
+          orderType: "DINE-IN",
+          tableNumber: "T1",
+          customerName: "Printer Test",
+          cashier: "SYSTEM",
+          items: [
+            { name: "Printer Alignment Test", qty: 1, price: 100 },
+            { name: "Speed Test Line", qty: 2, price: 50 },
+          ],
+          subtotal: 200,
+          serviceCharge: 0,
+          tax: 0,
+          discount: 0,
+          total: 200,
+          paymentMethod: "CASH",
+          cashGiven: 500,
+          balance: 300,
+          shop: {
+            name: shopInfo.name,
+            address: shopInfo.address,
+            phone: shopInfo.phone,
+            email: shopInfo.email,
+          },
+        },
+      });
+      setMessage("Test receipt sent to ESC/POS printer");
+      setTimeout(() => setMessage(""), 3000);
+    } catch (error) {
+      setMessage(error?.response?.data?.message || "Test print failed");
+      setTimeout(() => setMessage(""), 4000);
+    }
   };
 
   const calculateExample = () => {
@@ -199,7 +301,7 @@ export default function Settings() {
               {SETTINGS_SECTIONS.map((section) => (
                 <button
                   key={section.id}
-                  onClick={() => setActiveSection(section.id)}
+                  onClick={() => handleSectionChange(section.id)}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all mb-1 ${
                     activeSection === section.id
                       ? "bg-blue-600 text-white shadow-md"
@@ -219,7 +321,7 @@ export default function Settings() {
             {activeSection === "shop" && (
               <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
                 <h2 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-                  <span>🏪</span> Shop & Branch Info
+                  <span>SHOP</span> Shop & Branch Info
                 </h2>
                 <div className="space-y-4">
                   <div>
@@ -285,7 +387,7 @@ export default function Settings() {
                     >
                       <option value="LKR">LKR (Rs.)</option>
                       <option value="USD">USD ($)</option>
-                      <option value="EUR">EUR (€)</option>
+                      <option value="EUR">EUR (EUR)</option>
                     </select>
                   </div>
                   <div>
@@ -307,7 +409,7 @@ export default function Settings() {
             {activeSection === "tax" && (
               <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
                 <h2 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-                  <span>💰</span> Tax & Service Charges
+                  <span>TAX</span> Tax & Service Charges
                 </h2>
                 <div className="space-y-6">
                   {/* Tax Settings */}
@@ -442,15 +544,33 @@ export default function Settings() {
             {activeSection === "printer" && (
               <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
                 <h2 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-                  <span>🖨</span> Printer & Devices
+                  <span>PRINT</span> Printer & Devices
                 </h2>
                 <div className="space-y-6">
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="text-sm font-semibold text-blue-900">Recommended Model</div>
+                    <div className="text-xs text-blue-700 mt-1">{printerSettings.model || "XPrinter XP-K200L"} (80mm)</div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Print Mode</label>
+                    <select
+                      value={printerSettings.printMode}
+                      onChange={(e) => {
+                        setPrinterSettings((prev) => ({ ...prev, printMode: e.target.value }));
+                        setHasChanges(true);
+                      }}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="ESC_POS_TCP">Direct ESC/POS (TCP)</option>
+                      <option value="BROWSER_PRINT">Browser Print (Fallback)</option>
+                    </select>
+                  </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Printer Type</label>
                     <select
                       value={printerSettings.printerType}
                       onChange={(e) => {
-                        setPrinterSettings({ ...printerSettings, printerType: e.target.value });
+                        setPrinterSettings((prev) => ({ ...prev, printerType: e.target.value }));
                         setHasChanges(true);
                       }}
                       className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -460,12 +580,41 @@ export default function Settings() {
                       <option value="dot-matrix">Dot Matrix</option>
                     </select>
                   </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Printer Host / IP</label>
+                      <input
+                        type="text"
+                        value={printerSettings.host || ""}
+                        onChange={(e) => {
+                          setPrinterSettings((prev) => ({ ...prev, host: e.target.value }));
+                          setHasChanges(true);
+                        }}
+                        placeholder="e.g. 192.168.1.90"
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">TCP Port</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="65535"
+                        value={printerSettings.port}
+                        onChange={(e) => {
+                          setPrinterSettings((prev) => ({ ...prev, port: e.target.value }));
+                          setHasChanges(true);
+                        }}
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Paper Size</label>
                     <select
                       value={printerSettings.paperSize}
                       onChange={(e) => {
-                        setPrinterSettings({ ...printerSettings, paperSize: e.target.value });
+                        setPrinterSettings((prev) => ({ ...prev, paperSize: e.target.value }));
                         setHasChanges(true);
                       }}
                       className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -473,6 +622,36 @@ export default function Settings() {
                       <option value="80mm">80mm</option>
                       <option value="58mm">58mm</option>
                     </select>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Characters / Line</label>
+                      <input
+                        type="number"
+                        min="32"
+                        max="56"
+                        value={printerSettings.charsPerLine}
+                        onChange={(e) => {
+                          setPrinterSettings((prev) => ({ ...prev, charsPerLine: e.target.value }));
+                          setHasChanges(true);
+                        }}
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Timeout (ms)</label>
+                      <input
+                        type="number"
+                        min="1000"
+                        max="15000"
+                        value={printerSettings.timeoutMs}
+                        onChange={(e) => {
+                          setPrinterSettings((prev) => ({ ...prev, timeoutMs: e.target.value }));
+                          setHasChanges(true);
+                        }}
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
                   </div>
                   <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                     <div>
@@ -484,7 +663,7 @@ export default function Settings() {
                         type="checkbox"
                         checked={printerSettings.autoPrint}
                         onChange={(e) => {
-                          setPrinterSettings({ ...printerSettings, autoPrint: e.target.checked });
+                          setPrinterSettings((prev) => ({ ...prev, autoPrint: e.target.checked }));
                           setHasChanges(true);
                         }}
                         className="sr-only peer"
@@ -492,6 +671,11 @@ export default function Settings() {
                       <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                     </label>
                   </div>
+                  {printerSettings.printMode === "BROWSER_PRINT" && (
+                    <div className="text-xs text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                      Browser mode uses window.print(). For fast direct thermal printing choose ESC/POS TCP.
+                    </div>
+                  )}
                   <div className="pt-4 border-t border-gray-200">
                     <button
                       onClick={handleTestPrint}
@@ -508,11 +692,11 @@ export default function Settings() {
             {activeSection === "backup" && (
               <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
                 <h2 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-                  <span>💾</span> Backup & Restore
+                  <span>BACKUP</span> Backup & Restore
                 </h2>
                 <div className="space-y-6">
                   <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                    <div className="text-sm font-semibold text-yellow-800 mb-1">⚠️ Important</div>
+                    <div className="text-sm font-semibold text-yellow-800 mb-1">Important</div>
                     <div className="text-xs text-yellow-700">
                       Regular backups protect your data. Restore will overwrite current data.
                     </div>
@@ -582,7 +766,7 @@ export default function Settings() {
             {activeSection === "security" && (
               <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
                 <h2 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-                  <span>🔐</span> Security & Access
+                  <span>SEC</span> Security & Access
                 </h2>
                 <div className="space-y-6">
                   <div>
@@ -626,7 +810,7 @@ export default function Settings() {
             {activeSection === "preferences" && (
               <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
                 <h2 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-                  <span>⚙️</span> System Preferences
+                  <span>PREF</span> System Preferences
                 </h2>
                 <div className="space-y-6">
                   <div>

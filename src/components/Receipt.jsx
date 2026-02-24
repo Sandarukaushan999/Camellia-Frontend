@@ -19,6 +19,9 @@ export default function Receipt({ orderData }) {
     tax = 0,
     taxPercent = 2,
     discount = 0,
+    manualDiscount = 0,
+    loyaltyDiscount = 0,
+    loyaltyPointsRedeemed = 0,
     discountPercent = 0,
     total = 0,
     paymentMethod = "CASH",
@@ -339,11 +342,25 @@ export default function Receipt({ orderData }) {
               <span className="receipt-total-amount">{formatCurrency(tax)}</span>
             </div>
           )}
-          {discount > 0 && (
+          {manualDiscount > 0 && (
             <div className="receipt-total-row">
               <span className="receipt-total-label">
-                Discount{discountPercent > 0 ? ` (${discountPercent}%)` : ""}
+                Manual Discount{discountPercent > 0 ? ` (${discountPercent}%)` : ""}
               </span>
+              <span className="receipt-total-amount">- {formatCurrency(manualDiscount)}</span>
+            </div>
+          )}
+          {loyaltyDiscount > 0 && (
+            <div className="receipt-total-row">
+              <span className="receipt-total-label">
+                Loyalty Redeem{loyaltyPointsRedeemed > 0 ? ` (${loyaltyPointsRedeemed} pts)` : ""}
+              </span>
+              <span className="receipt-total-amount">- {formatCurrency(loyaltyDiscount)}</span>
+            </div>
+          )}
+          {discount > 0 && manualDiscount <= 0 && loyaltyDiscount <= 0 && (
+            <div className="receipt-total-row">
+              <span className="receipt-total-label">Discount</span>
               <span className="receipt-total-amount">- {formatCurrency(discount)}</span>
             </div>
           )}
@@ -394,5 +411,4 @@ export default function Receipt({ orderData }) {
     </div>
   );
 }
-
 

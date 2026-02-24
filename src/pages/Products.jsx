@@ -24,11 +24,12 @@ const CATEGORY_ICONS = {
 export default function Products() {
   const [products, setProducts] = useState([]);
   const [inventoryItems, setInventoryItems] = useState([]);
-  const [productIngredients, setProductIngredients] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("ALL");
   const [showModal, setShowModal] = useState(false);
+  const [showIngredientsModal, setShowIngredientsModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
+  const [ingredientsProduct, setIngredientsProduct] = useState(null);
   const [form, setForm] = useState({
     name: "",
     category: "",
@@ -38,6 +39,9 @@ export default function Products() {
     is_active: true,
   });
   const [ingredients, setIngredients] = useState([{ inventory_item_id: "", quantity: "" }]);
+  const [ingredientsForm, setIngredientsForm] = useState([{ inventory_item_id: "", quantity: "" }]);
+  const [loadingIngredientsForm, setLoadingIngredientsForm] = useState(false);
+  const [savingIngredientsForm, setSavingIngredientsForm] = useState(false);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -140,6 +144,92 @@ export default function Products() {
     }
     
     setShowModal(true);
+  };
+
+  const openIngredientsModal = async (product) => {
+    setIngredientsProduct(product);
+    setLoadingIngredientsForm(true);
+    setShowIngredientsModal(true);
+
+    try {
+      await loadInventoryItems();
+      const { data } = await api.get(`/inventory/products/${product.id}/ingredients`);
+      if (Array.isArray(data) && data.length > 0) {
+        setIngredientsForm(
+          data.map((ing) => ({
+            inventory_item_id: String(ing.inventory_item_id),
+            quantity: String(ing.quantity),
+          }))
+        );
+      } else {
+        setIngredientsForm([{ inventory_item_id: "", quantity: "" }]);
+      }
+    } catch (err) {
+      console.error("Failed to load product ingredients", err);
+      setIngredientsForm([{ inventory_item_id: "", quantity: "" }]);
+      setMessage("Failed to load ingredients");
+      setTimeout(() => setMessage(""), 3000);
+    } finally {
+      setLoadingIngredientsForm(false);
+    }
+  };
+
+  const closeIngredientsModal = () => {
+    setShowIngredientsModal(false);
+    setIngredientsProduct(null);
+    setIngredientsForm([{ inventory_item_id: "", quantity: "" }]);
+    setLoadingIngredientsForm(false);
+    setSavingIngredientsForm(false);
+  };
+
+  const addIngredientsFormRow = () => {
+    setIngredientsForm((prev) => [...prev, { inventory_item_id: "", quantity: "" }]);
+  };
+
+  const removeIngredientsFormRow = (index) => {
+    setIngredientsForm((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const updateIngredientsFormRow = (index, field, value) => {
+    setIngredientsForm((prev) =>
+      prev.map((row, i) => (i === index ? { ...row, [field]: value } : row))
+    );
+  };
+
+  const saveIngredientsForProduct = async (e) => {
+    e.preventDefault();
+    if (!ingredientsProduct) {
+      return;
+    }
+
+    setSavingIngredientsForm(true);
+    try {
+      const validIngredients = ingredientsForm
+        .map((row) => ({
+          inventory_item_id: parseInt(row.inventory_item_id, 10),
+          quantity: parseFloat(row.quantity),
+        }))
+        .filter(
+          (row) =>
+            Number.isFinite(row.inventory_item_id) &&
+            Number.isFinite(row.quantity) &&
+            row.quantity > 0
+        );
+
+      await api.post(`/inventory/products/${ingredientsProduct.id}/ingredients`, {
+        ingredients: validIngredients,
+      });
+
+      setMessage(`Ingredients updated for ${ingredientsProduct.name}`);
+      closeIngredientsModal();
+      setTimeout(() => setMessage(""), 3000);
+    } catch (err) {
+      console.error("Failed to save product ingredients", err);
+      setMessage(err.response?.data?.message || "Failed to save ingredients");
+      setTimeout(() => setMessage(""), 3000);
+    } finally {
+      setSavingIngredientsForm(false);
+    }
   };
 
   // Handle form submit
@@ -391,6 +481,13 @@ export default function Products() {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => openIngredientsModal(product)}
+                            className="px-2.5 py-2 text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors text-xs font-semibold border border-emerald-100"
+                            title="Manage Ingredients"
+                          >
+                            Ingredients
+                          </button>
                           <button
                             onClick={() => openEditModal(product)}
                             className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -684,6 +781,134 @@ export default function Products() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Ingredients Modal */}
+      {showIngredientsModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">Manage Ingredients</h2>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {ingredientsProduct ? ingredientsProduct.name : "Product"}
+                  </p>
+                </div>
+                <button
+                  onClick={closeIngredientsModal}
+                  className="text-gray-400 hover:text-gray-600 text-2xl"
+                  type="button"
+                >
+                  x
+                </button>
+              </div>
+
+              {loadingIngredientsForm ? (
+                <div className="py-12 text-center text-gray-500">Loading ingredients...</div>
+              ) : (
+                <form onSubmit={saveIngredientsForProduct} className="space-y-4">
+                  <p className="text-xs text-gray-500">
+                    Select inventory items and define quantity used for one unit of this product.
+                  </p>
+
+                  <div className="space-y-3">
+                    {ingredientsForm.map((ing, index) => (
+                      <div key={index} className="flex gap-2 items-end">
+                        <div className="flex-1">
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            Inventory Item
+                          </label>
+                          <select
+                            value={ing.inventory_item_id}
+                            onChange={(e) =>
+                              updateIngredientsFormRow(index, "inventory_item_id", e.target.value)
+                            }
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            <option value="">Select Item</option>
+                            {inventoryItems.map((item) => (
+                              <option key={item.id} value={item.id}>
+                                {item.name} ({item.unit})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="w-32">
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            Quantity
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={ing.quantity}
+                            onChange={(e) =>
+                              updateIngredientsFormRow(index, "quantity", e.target.value)
+                            }
+                            placeholder="0.00"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                        {ingredientsForm.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeIngredientsFormRow(index)}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Remove"
+                          >
+                            <svg
+                              className="w-5 h-5"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M6 18L18 6M6 6l12 12"
+                              />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={addIngredientsFormRow}
+                    className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-600 hover:border-blue-500 hover:text-blue-600 transition-colors"
+                  >
+                    + Add Ingredient Row
+                  </button>
+
+                  <div className="flex gap-3 pt-4 border-t border-gray-200">
+                    <button
+                      type="button"
+                      onClick={closeIngredientsModal}
+                      className="flex-1 px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={savingIngredientsForm}
+                      className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-colors shadow-md ${
+                        savingIngredientsForm
+                          ? "bg-blue-300 text-white cursor-not-allowed"
+                          : "bg-blue-600 text-white hover:bg-blue-700"
+                      }`}
+                    >
+                      {savingIngredientsForm ? "Saving..." : "Save Ingredients"}
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
           </div>
         </div>

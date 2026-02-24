@@ -25,6 +25,37 @@ const DEFAULT_CATEGORIES = [
   "Pizza",
 ];
 
+const DEFAULT_PRINTER_SETTINGS = {
+  autoPrint: true,
+  printMode: "ESC_POS_TCP",
+  model: "XPrinter XP-K200L",
+  host: "",
+  port: 9100,
+  paperSize: "80mm",
+  charsPerLine: 48,
+  timeoutMs: 4000,
+};
+
+function loadShopInfoFromStorage() {
+  const fallback = {
+    name: "Camellia Cafe & Restaurant",
+    address: "",
+    phone: "",
+    email: "",
+  };
+
+  try {
+    const saved = localStorage.getItem("cv_shop_info");
+    if (saved) {
+      return { ...fallback, ...JSON.parse(saved) };
+    }
+  } catch {
+    // ignore parsing/storage errors
+  }
+
+  return fallback;
+}
+
 export default function POS() {
   const { user } = useAuth();
   const [products, setProducts] = useState([]);
@@ -40,6 +71,14 @@ export default function POS() {
   const [message, setMessage] = useState("");
   const [showReceipt, setShowReceipt] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [crmCustomerName, setCrmCustomerName] = useState("");
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [customerLookupStatus, setCustomerLookupStatus] = useState("idle"); // idle | loading | found | not-found | error
+  const [customerLookupMessage, setCustomerLookupMessage] = useState("");
+  const [loyaltyPreview, setLoyaltyPreview] = useState(null);
+  const [loyaltyPointsToRedeem, setLoyaltyPointsToRedeem] = useState("");
+  const [loyaltyPreviewLoading, setLoyaltyPreviewLoading] = useState(false);
   // Per-bill discount
   const [discountType, setDiscountType] = useState("NONE"); // NONE | PERCENT | AMOUNT
   const [discountValue, setDiscountValue] = useState("");
@@ -49,6 +88,9 @@ export default function POS() {
     openPOSOnStart: true,
     enableSound: true,
     touchMode: true,
+  });
+  const [printerSettings, setPrinterSettings] = useState({
+    ...DEFAULT_PRINTER_SETTINGS,
   });
 
   const loadProducts = useCallback(async () => {
@@ -124,6 +166,32 @@ export default function POS() {
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
+  // Load printer settings (direct ESC/POS printing)
+  useEffect(() => {
+    const loadPrinterSettings = () => {
+      try {
+        const saved = localStorage.getItem("cv_printer_settings");
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          setPrinterSettings((prev) => ({ ...prev, ...parsed }));
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    loadPrinterSettings();
+
+    const onStorage = (e) => {
+      if (e.key === "cv_printer_settings_updated_at") {
+        loadPrinterSettings();
+      }
+    };
+
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
   // Only show these specific categories - no dynamic categories from products
   const categories = useMemo(() => {
     return DEFAULT_CATEGORIES;
@@ -159,6 +227,106 @@ export default function POS() {
       oscillator.stop(ctx.currentTime + 0.1);
     } catch {
       // audio unsupported, ignore
+    }
+  };
+
+  const normalizePhone = (phone) => String(phone || "").replace(/[^\d+]/g, "").trim();
+
+  const clearSelectedCustomer = () => {
+    setSelectedCustomer(null);
+    setCustomerLookupStatus("idle");
+    setCustomerLookupMessage("");
+    setLoyaltyPreview(null);
+    setLoyaltyPointsToRedeem("");
+  };
+
+  const lookupCustomerByPhone = async () => {
+    const normalized = normalizePhone(customerPhone);
+    if (!normalized) {
+      setCustomerLookupStatus("error");
+      setCustomerLookupMessage("Enter a valid phone number");
+      return;
+    }
+
+    setCustomerLookupStatus("loading");
+    setCustomerLookupMessage("");
+    try {
+      const { data } = await api.get("/crm/customers/lookup", {
+        params: { phone: normalized },
+      });
+      if (data?.customer) {
+        setSelectedCustomer(data.customer);
+        setCrmCustomerName(data.customer.full_name || "");
+        setLoyaltyPointsToRedeem("");
+        setCustomerLookupStatus("found");
+        setCustomerLookupMessage("Customer found");
+      } else {
+        setSelectedCustomer(null);
+        setLoyaltyPreview(null);
+        setLoyaltyPointsToRedeem("");
+        setCustomerLookupStatus("not-found");
+        setCustomerLookupMessage("No customer found for this phone");
+      }
+    } catch (err) {
+      console.error("Customer lookup failed", err);
+      setSelectedCustomer(null);
+      setLoyaltyPreview(null);
+      setLoyaltyPointsToRedeem("");
+      setCustomerLookupStatus("error");
+      setCustomerLookupMessage(err.response?.data?.message || "Lookup failed");
+    }
+  };
+
+  const quickCreateCustomer = async () => {
+    const normalized = normalizePhone(customerPhone);
+    const name = String(crmCustomerName || customerName || "").trim();
+    if (!normalized || !name) {
+      setCustomerLookupStatus("error");
+      setCustomerLookupMessage("Customer name and phone are required");
+      return;
+    }
+
+    setCustomerLookupStatus("loading");
+    setCustomerLookupMessage("");
+    try {
+      const { data } = await api.post("/crm/customers/quick-create", {
+        full_name: name,
+        phone: normalized,
+      });
+      if (data?.customer) {
+        setSelectedCustomer(data.customer);
+        setCrmCustomerName(data.customer.full_name || name);
+        setLoyaltyPointsToRedeem("");
+        setCustomerLookupStatus("found");
+        setCustomerLookupMessage(data.created ? "Customer created" : "Existing customer selected");
+      } else {
+        setCustomerLookupStatus("error");
+        setCustomerLookupMessage("Customer creation failed");
+      }
+    } catch (err) {
+      console.error("Quick create customer failed", err);
+      setCustomerLookupStatus("error");
+      setCustomerLookupMessage(err.response?.data?.message || "Failed to create customer");
+    }
+  };
+
+  const loadLoyaltyPreview = async (customerId, orderTotal) => {
+    if (!customerId || !Number.isFinite(orderTotal) || orderTotal <= 0) {
+      setLoyaltyPreview(null);
+      return;
+    }
+
+    setLoyaltyPreviewLoading(true);
+    try {
+      const { data } = await api.get(`/crm/customers/${customerId}/loyalty/redeem-preview`, {
+        params: { order_total: orderTotal.toFixed(2) },
+      });
+      setLoyaltyPreview(data || null);
+    } catch (err) {
+      console.error("Loyalty preview failed", err);
+      setLoyaltyPreview(null);
+    } finally {
+      setLoyaltyPreviewLoading(false);
     }
   };
 
@@ -257,34 +425,91 @@ export default function POS() {
 
     const beforeDiscount = subtotal + serviceCharge + tax;
 
-    // Discount
-    let discountAmount = 0;
+    // Manual discount
+    let manualDiscountAmount = 0;
     const valueNum = parseFloat(discountValue) || 0;
     if (discountType === "PERCENT" && valueNum > 0) {
-      discountAmount = beforeDiscount * (valueNum / 100);
+      manualDiscountAmount = beforeDiscount * (valueNum / 100);
     } else if (discountType === "AMOUNT" && valueNum > 0) {
-      discountAmount = valueNum;
+      manualDiscountAmount = valueNum;
     }
     // Do not allow discount to exceed total before discount
-    if (discountAmount > beforeDiscount) {
-      discountAmount = beforeDiscount;
+    if (manualDiscountAmount > beforeDiscount) {
+      manualDiscountAmount = beforeDiscount;
     }
 
-    let total = beforeDiscount - discountAmount;
+    let totalBeforeLoyalty = beforeDiscount - manualDiscountAmount;
+    if (totalBeforeLoyalty < 0) {
+      totalBeforeLoyalty = 0;
+    }
+
+    let loyaltyPointsRedeemed = 0;
+    let loyaltyDiscountAmount = 0;
+    if (selectedCustomer && loyaltyPreview) {
+      const requestedPoints = parseInt(loyaltyPointsToRedeem, 10);
+      const maxRedeemablePoints = Number(loyaltyPreview.max_redeemable_points || 0);
+      const minRedeemPoints = Number(loyaltyPreview.min_redeem_points || 0);
+      const pointValue = Number(loyaltyPreview.discount_per_point || 1);
+
+      if (Number.isFinite(requestedPoints) && requestedPoints > 0 && requestedPoints >= minRedeemPoints) {
+        loyaltyPointsRedeemed = Math.min(requestedPoints, maxRedeemablePoints);
+        loyaltyDiscountAmount = loyaltyPointsRedeemed * pointValue;
+      }
+    }
+
+    if (loyaltyDiscountAmount > totalBeforeLoyalty) {
+      loyaltyDiscountAmount = totalBeforeLoyalty;
+    }
+
+    let total = totalBeforeLoyalty - loyaltyDiscountAmount;
     if (taxSettings.roundTotal) {
       total = Math.round(total);
     }
+
+    const totalDiscount = manualDiscountAmount + loyaltyDiscountAmount;
 
     return {
       subtotal: subtotal.toFixed(2),
       serviceCharge: serviceCharge.toFixed(2),
       tax: tax.toFixed(2),
-      discount: discountAmount.toFixed(2),
+      discount: totalDiscount.toFixed(2),
+      manualDiscount: manualDiscountAmount.toFixed(2),
+      loyaltyDiscount: loyaltyDiscountAmount.toFixed(2),
+      loyaltyPointsRedeemed,
+      totalBeforeLoyalty: totalBeforeLoyalty.toFixed(2),
       // keep percent value for receipt (only meaningful when type is PERCENT)
       discountPercent: discountType === "PERCENT" ? valueNum : 0,
       total: total.toFixed(2),
     };
-  }, [cart, taxSettings, discountType, discountValue]);
+  }, [
+    cart,
+    taxSettings,
+    discountType,
+    discountValue,
+    selectedCustomer,
+    loyaltyPreview,
+    loyaltyPointsToRedeem,
+  ]);
+
+  useEffect(() => {
+    if (!showPaymentModal || !selectedCustomer?.id) {
+      setLoyaltyPreview(null);
+      setLoyaltyPointsToRedeem("");
+      return;
+    }
+
+    const orderTotal = parseFloat(totals.totalBeforeLoyalty || 0);
+    if (!Number.isFinite(orderTotal) || orderTotal <= 0) {
+      setLoyaltyPreview(null);
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      loadLoyaltyPreview(selectedCustomer.id, orderTotal);
+    }, 180);
+
+    return () => clearTimeout(timeout);
+  }, [showPaymentModal, selectedCustomer?.id, totals.totalBeforeLoyalty]);
 
   // Generate order ID
   const generateOrderId = () => {
@@ -323,6 +548,9 @@ export default function POS() {
       setTimeout(() => setMessage(""), 2000);
       return;
     }
+    if (!crmCustomerName && customerName) {
+      setCrmCustomerName(customerName);
+    }
     setShowPaymentModal(true);
     setOrderId(generateOrderId());
   };
@@ -340,24 +568,38 @@ export default function POS() {
       return;
     }
 
-    // For CASH, show quick cash input modal
-    if (method === "CASH") {
-      setPaymentMethod("CASH");
-      setShowPaymentModal(true);
-      return;
+    setPaymentMethod(method);
+    if (method !== "CASH") {
+      setCashGiven("");
     }
-
-    // For CARD and QR, process directly
-    await executePayment(method, 0);
+    if (!crmCustomerName && customerName) {
+      setCrmCustomerName(customerName);
+    }
+    setShowPaymentModal(true);
   };
 
   // Execute payment
   const executePayment = async (method, cashAmount = 0) => {
 
     try {
+      const normalizedPhone = normalizePhone(customerPhone);
+      const resolvedCustomerName = String(
+        selectedCustomer?.full_name ||
+          crmCustomerName ||
+          (orderType === "DELIVERY" ? customerName : "")
+      ).trim();
+
       const payload = {
         total: totals.total,
+        total_before_loyalty: totals.totalBeforeLoyalty,
         payment_method: method,
+        customer_id: selectedCustomer?.id || null,
+        customer_name: resolvedCustomerName || null,
+        customer_phone: normalizedPhone || selectedCustomer?.phone || null,
+        loyalty_points_redeemed: totals.loyaltyPointsRedeemed || 0,
+        loyalty_discount_amount: totals.loyaltyDiscount || 0,
+        order_type: orderType,
+        channel: "POS",
         items: cart.map((item) => ({
           product_id: item.id,
           qty: item.qty,
@@ -374,7 +616,7 @@ export default function POS() {
         time: new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
         orderType: orderType,
         tableNumber: orderType === "DINE-IN" ? (tableNumber || null) : null,
-        customerName: orderType === "DELIVERY" ? (customerName || tableNumber || null) : null,
+        customerName: resolvedCustomerName || (orderType === "DELIVERY" ? (customerName || tableNumber || null) : null),
         cashier: user?.username || "System",
         items: cart.map((item) => ({
           name: item.name,
@@ -387,6 +629,9 @@ export default function POS() {
         tax: parseFloat(totals.tax),
         taxPercent: Number(taxSettings.taxPercentage) || 0,
         discount: parseFloat(totals.discount),
+        manualDiscount: parseFloat(totals.manualDiscount || 0),
+        loyaltyDiscount: parseFloat(totals.loyaltyDiscount || 0),
+        loyaltyPointsRedeemed: parseInt(totals.loyaltyPointsRedeemed || 0, 10),
         discountPercent: totals.discountPercent || 0,
         total: parseFloat(totals.total),
         paymentMethod: method,
@@ -397,16 +642,24 @@ export default function POS() {
       setReceiptData(receiptInfo);
       setShowReceipt(true);
       setMessage(`Order #${res.data.id} paid successfully!`);
-      
-      // Auto print if enabled (can be controlled by settings)
-      setTimeout(() => {
-        window.print();
-      }, 500);
+
+      // Auto print with direct ESC/POS when configured, fallback to browser print.
+      if (printerSettings.autoPrint) {
+        setTimeout(async () => {
+          const printed = await printReceipt(receiptInfo, { silent: true });
+          if (!printed) {
+            window.print();
+          }
+        }, 250);
+      }
       
       setTimeout(() => {
         setCart([]);
         setTableNumber("");
         setCustomerName("");
+        setCustomerPhone("");
+        setCrmCustomerName("");
+        clearSelectedCustomer();
         setCashGiven("");
         setShowPaymentModal(false);
         setMessage("");
@@ -429,22 +682,77 @@ export default function POS() {
     return `Rs. ${parseFloat(amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
+  const printReceipt = useCallback(
+    async (orderData, { silent = false } = {}) => {
+      if (!orderData) return false;
+
+      const printMode = String(printerSettings.printMode || "BROWSER_PRINT").toUpperCase();
+      if (printMode === "ESC_POS_TCP") {
+        const host = String(printerSettings.host || "").trim();
+        if (!host) {
+          if (!silent) {
+            setMessage("Printer host/IP not configured. Falling back to browser print.");
+            setTimeout(() => setMessage(""), 3500);
+          }
+          window.print();
+          return true;
+        }
+
+        try {
+          await api.post("/printing/escpos", {
+            printer: {
+              host,
+              port: Number(printerSettings.port) || 9100,
+              paperSize: printerSettings.paperSize || "80mm",
+              charsPerLine: Number(printerSettings.charsPerLine) || 48,
+              timeoutMs: Number(printerSettings.timeoutMs) || 4000,
+            },
+            receipt: {
+              ...orderData,
+              shop: loadShopInfoFromStorage(),
+            },
+          });
+          if (!silent) {
+            setMessage("Receipt sent to ESC/POS printer");
+            setTimeout(() => setMessage(""), 2500);
+          }
+          return true;
+        } catch (error) {
+          console.error("ESC/POS print failed", error);
+          if (!silent) {
+            setMessage(
+              error?.response?.data?.message ||
+                "Direct print failed. Falling back to browser print."
+            );
+            setTimeout(() => setMessage(""), 4000);
+          }
+          window.print();
+          return true;
+        }
+      }
+
+      window.print();
+      return true;
+    },
+    [printerSettings]
+  );
+
   const balance = useMemo(() => {
     if (!cashGiven || paymentMethod !== "CASH") return 0;
     return parseFloat(cashGiven) - parseFloat(totals.total);
   }, [cashGiven, totals.total, paymentMethod]);
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
+    <div className="h-full min-h-full flex flex-col bg-gray-50">
       {/* Header - Order Type Selector */}
       <div className="bg-white border-b border-gray-200 px-4 py-3">
-        <div className="flex items-center gap-3">
-              <div className={`flex gap-2 flex-1 ${systemPrefs.touchMode ? "space-x-2" : ""}`}>
+        <div className="flex items-center gap-3 flex-wrap">
+              <div className={`flex gap-2 w-full sm:flex-1 ${systemPrefs.touchMode ? "space-x-2" : ""}`}>
             {["DINE-IN", "TAKEAWAY", "DELIVERY"].map((type) => (
                 <button
                 key={type}
                 onClick={() => setOrderType(type)}
-                  className={`px-4 ${systemPrefs.touchMode ? "py-3" : "py-2"} rounded-lg font-semibold text-sm transition-all ${
+                  className={`flex-1 sm:flex-none px-4 ${systemPrefs.touchMode ? "py-3" : "py-2"} rounded-lg font-semibold text-sm transition-all ${
                   orderType === type
                     ? "bg-blue-600 text-white shadow-md"
                     : "bg-gray-100 text-gray-700 hover:bg-gray-200"
@@ -460,7 +768,7 @@ export default function POS() {
               placeholder="Table #"
               value={tableNumber}
               onChange={(e) => setTableNumber(e.target.value)}
-              className="w-24 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full sm:w-24 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           )}
           {orderType === "DELIVERY" && (
@@ -468,17 +776,22 @@ export default function POS() {
               type="text"
               placeholder="Customer Name"
               value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
-              className="w-32 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onChange={(e) => {
+                setCustomerName(e.target.value);
+                if (!selectedCustomer && !crmCustomerName) {
+                  setCrmCustomerName(e.target.value);
+                }
+              }}
+              className="w-full sm:w-40 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           )}
         </div>
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col xl:flex-row overflow-hidden min-h-0">
         {/* Left Side - Product Selection */}
-        <div className="flex-1 flex flex-col bg-white border-r border-gray-200">
+        <div className="flex-1 min-h-0 flex flex-col bg-white xl:border-r border-gray-200">
           {/* Category Bar - Enhanced */}
           <div className="bg-gradient-to-r from-gray-50 to-gray-100 border-b-2 border-gray-300 px-4 py-3 overflow-x-auto shadow-sm">
             <div className="flex gap-3 min-w-max">
@@ -505,7 +818,7 @@ export default function POS() {
 
           {/* Product Grid */}
           <div className="flex-1 overflow-y-auto p-4">
-            <div className={`grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 ${systemPrefs.touchMode ? "gap-4" : ""}`}>
+            <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3 ${systemPrefs.touchMode ? "gap-4" : ""}`}>
               {filteredProducts.map((product) => (
                 <div
                   key={product.id}
@@ -538,7 +851,7 @@ export default function POS() {
         </div>
 
         {/* Right Side - Bill Panel */}
-        <div className="w-96 bg-white flex flex-col">
+        <div className="w-full xl:w-[24rem] xl:min-w-[24rem] bg-white flex flex-col border-t xl:border-t-0 xl:border-l border-gray-200">
           {/* Bill Header */}
           <div className="bg-blue-600 text-white px-4 py-3 border-b border-blue-700">
             <div className="font-bold text-lg">Current Bill</div>
@@ -548,7 +861,7 @@ export default function POS() {
           </div>
 
           {/* Bill Preview - Receipt Template */}
-          <div className="flex-1 overflow-y-auto p-3" style={{ minHeight: 0 }}>
+          <div className="flex-1 overflow-y-auto p-3 min-h-[220px] max-h-[42vh] xl:max-h-none" style={{ minHeight: 0 }}>
             {cart.length === 0 ? (
               <div className="text-center text-gray-400 py-12">
                 <div className="text-2xl mb-2">🛒</div>
@@ -570,6 +883,9 @@ export default function POS() {
                     tax: parseFloat(totals.tax),
                     taxPercent: Number(taxSettings.taxPercentage) || 0,
                     discount: parseFloat(totals.discount),
+                    manualDiscount: parseFloat(totals.manualDiscount || 0),
+                    loyaltyDiscount: parseFloat(totals.loyaltyDiscount || 0),
+                    loyaltyPointsRedeemed: parseInt(totals.loyaltyPointsRedeemed || 0, 10),
                     discountPercent: totals.discountPercent || 0,
                     total: parseFloat(totals.total),
                     orderType: orderType,
@@ -621,7 +937,7 @@ export default function POS() {
                 )}
               </div>
 
-              <div className="flex gap-2 pt-1">
+              <div className="grid grid-cols-3 gap-2 pt-1">
                 <button
                   onClick={() => processPayment("CASH")}
                   className="flex-1 py-3 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 transition-colors shadow-md text-sm"
@@ -673,6 +989,130 @@ export default function POS() {
                   <div className="text-4xl font-bold text-blue-600">
                     {formatCurrency(totals.total)}
                   </div>
+                </div>
+
+                <div className="mb-4 border border-gray-200 rounded-lg p-3 bg-gray-50">
+                  <div className="text-sm font-semibold text-gray-800 mb-2">Customer (CRM)</div>
+                  <div className="flex gap-2 mb-2">
+                    <input
+                      type="text"
+                      value={customerPhone}
+                      onChange={(e) => {
+                        setCustomerPhone(e.target.value);
+                        if (customerLookupStatus !== "idle") {
+                          setCustomerLookupStatus("idle");
+                          setCustomerLookupMessage("");
+                        }
+                      }}
+                      placeholder="Phone number"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={lookupCustomerByPhone}
+                      disabled={customerLookupStatus === "loading"}
+                      className={`px-3 py-2 rounded-lg text-sm font-semibold ${
+                        customerLookupStatus === "loading"
+                          ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                          : "bg-blue-600 text-white hover:bg-blue-700"
+                      }`}
+                    >
+                      Lookup
+                    </button>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={crmCustomerName}
+                      onChange={(e) => setCrmCustomerName(e.target.value)}
+                      placeholder="Customer name"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    {customerLookupStatus === "not-found" && (
+                      <button
+                        type="button"
+                        onClick={quickCreateCustomer}
+                        className="px-3 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700"
+                      >
+                        Create
+                      </button>
+                    )}
+                    {selectedCustomer && (
+                      <button
+                        type="button"
+                        onClick={clearSelectedCustomer}
+                        className="px-3 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-300"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+
+                  {customerLookupMessage && (
+                    <div
+                      className={`text-xs mt-2 ${
+                        customerLookupStatus === "error"
+                          ? "text-red-600"
+                          : customerLookupStatus === "found"
+                          ? "text-emerald-700"
+                          : "text-gray-600"
+                      }`}
+                    >
+                      {customerLookupMessage}
+                    </div>
+                  )}
+
+                  {selectedCustomer && (
+                    <div className="mt-2 p-2 bg-white border border-emerald-200 rounded-lg">
+                      <div className="text-sm font-semibold text-gray-900">{selectedCustomer.full_name}</div>
+                      <div className="text-xs text-gray-600">
+                        {selectedCustomer.phone} | {selectedCustomer.total_orders || 0} orders |{" "}
+                        {selectedCustomer.loyalty_points || 0} pts
+                      </div>
+                      <div className="mt-2 pt-2 border-t border-emerald-100">
+                        {loyaltyPreviewLoading ? (
+                          <div className="text-xs text-gray-500">Loading loyalty options...</div>
+                        ) : loyaltyPreview ? (
+                          <>
+                            <div className="text-xs text-gray-600 mb-1">
+                              Redeem up to {loyaltyPreview.max_redeemable_points || 0} points
+                              {" "}({formatCurrency(loyaltyPreview.max_discount || 0)})
+                            </div>
+                            <div className="flex gap-2">
+                              <input
+                                type="number"
+                                min="0"
+                                value={loyaltyPointsToRedeem}
+                                onChange={(e) => setLoyaltyPointsToRedeem(e.target.value)}
+                                placeholder={`Min ${loyaltyPreview.min_redeem_points || 0}`}
+                                className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs"
+                              />
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setLoyaltyPointsToRedeem(
+                                    String(loyaltyPreview.max_redeemable_points || 0)
+                                  )
+                                }
+                                className="px-2 py-1.5 bg-gray-100 text-gray-700 rounded text-xs font-semibold hover:bg-gray-200"
+                              >
+                                Max
+                              </button>
+                            </div>
+                            <div className="text-xs text-blue-700 mt-1">
+                              Loyalty discount: {formatCurrency(totals.loyaltyDiscount || 0)}
+                            </div>
+                            <div className="text-xs text-gray-600">
+                              Total before loyalty: {formatCurrency(totals.totalBeforeLoyalty || 0)}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="text-xs text-gray-500">Loyalty redemption not available.</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Payment Method Selection */}
@@ -774,7 +1214,7 @@ export default function POS() {
                 <h2 className="text-xl font-bold text-gray-900">Receipt</h2>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => window.print()}
+                    onClick={() => printReceipt(receiptData)}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
                   >
                     Print

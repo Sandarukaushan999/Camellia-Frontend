@@ -9,6 +9,7 @@ import Products from "./pages/Products.jsx";
 import Reports from "./pages/Reports.jsx";
 import Settings from "./pages/Settings.jsx";
 import Inventory from "./pages/Inventory.jsx";
+import CRM from "./pages/CRM.jsx";
 import MainLayout from "./layout/MainLayout.jsx";
 
 export default function App() {
@@ -128,6 +129,14 @@ export default function App() {
           }
         />
         <Route
+          path="crm"
+          element={
+            <ProtectedRoute roles={["ADMIN"]}>
+              <CRM />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="settings"
           element={
             <ProtectedRoute roles={["ADMIN"]}>
@@ -141,5 +150,4 @@ export default function App() {
     </Routes>
   );
 }
-
 
