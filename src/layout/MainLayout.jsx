@@ -30,8 +30,19 @@ export default function MainLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("cv_sidebar_collapsed") === "1";
+    } catch {
+      return false;
+    }
+  });
   const [branches, setBranches] = useState([]);
   const [activeBranchId, setActiveBranchId] = useState(() => getActiveBranchId(null));
+  const isPOSWorkspace =
+    location.pathname === "/pos" ||
+    location.pathname.startsWith("/pos/") ||
+    location.pathname.startsWith("/orders/");
 
   const links = useMemo(() => {
     const adminLinks = [
@@ -146,6 +157,14 @@ export default function MainLayout() {
   }, [location.pathname]);
 
   useEffect(() => {
+    try {
+      localStorage.setItem("cv_sidebar_collapsed", sidebarCollapsed ? "1" : "0");
+    } catch {
+      // ignore storage errors
+    }
+  }, [sidebarCollapsed]);
+
+  useEffect(() => {
     if (!mobileNavOpen) {
       return undefined;
     }
@@ -227,8 +246,16 @@ export default function MainLayout() {
     setStoredActiveBranchId(nextBranchId);
   };
 
+  const toggleSidebarCollapsed = () => {
+    // Keep mobile drawer behavior unchanged.
+    if (window.matchMedia("(max-width: 1024px)").matches) {
+      return;
+    }
+    setSidebarCollapsed((prev) => !prev);
+  };
+
   return (
-    <div className="cv-shell">
+    <div className={`cv-shell ${sidebarCollapsed ? "is-sidebar-collapsed" : ""}`}>
       {mobileNavOpen && (
         <button
           type="button"
@@ -238,22 +265,29 @@ export default function MainLayout() {
         />
       )}
 
-      <aside className={`cv-sidebar ${mobileNavOpen ? "is-open" : ""}`}>
-        <div className="cv-brand">
+      <aside className={`cv-sidebar ${mobileNavOpen ? "is-open" : ""} ${sidebarCollapsed ? "is-collapsed" : ""}`}>
+        <button
+          type="button"
+          className="cv-brand cv-brand-toggle"
+          onClick={toggleSidebarCollapsed}
+          aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
           <div className="cv-brand-media">
             <img src={logo} alt="Camellia POS Logo" className="h-full w-full object-cover" />
           </div>
-          <div>
+          <div className="cv-brand-text">
             <div className="cv-brand-title">Camellia POS</div>
             <div className="cv-brand-subtitle">Cafe & Restaurant</div>
           </div>
-        </div>
+        </button>
 
         <nav className="cv-nav">
           {links.map((link) => (
             <NavLink
               key={link.to}
               to={link.to}
+              title={link.label}
               className={({ isActive }) => `cv-nav-link ${isActive ? "is-active" : ""}`}
             >
               <span className="cv-nav-icon">
@@ -289,67 +323,84 @@ export default function MainLayout() {
       </aside>
 
       <main className="cv-main">
-        <header className="cv-topbar">
-          <div className="cv-topbar-start">
-            <button
-              type="button"
-              className="cv-mobile-toggle"
-              onClick={() => setMobileNavOpen((prev) => !prev)}
-              aria-label="Toggle navigation"
-            >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 7h16M4 12h16M4 17h16" />
-              </svg>
-            </button>
-            <div className="cv-route-meta">
-              <div className="cv-welcome-title cv-route-title-row">
-                <span className="cv-route-icon" aria-hidden="true">
-                  <i className={menuIconClasses[activeLink?.label] || "fi-rr-apps"} />
-                </span>
-                <span>Welcome, {user?.username || "Operator"}</span>
-              </div>
-              <div className="cv-route-subtitle">{activeLink?.subtitle || "Professional POS operations"}</div>
-              <div className="cv-route-pill">{activeLink?.label || "Workspace"}</div>
-            </div>
-          </div>
-
-          <div className="cv-topbar-end">
-            {branches.length > 0 && (
-              <select
-                value={activeBranchId || ""}
-                onChange={handleBranchChange}
-                className="cv-branch-select"
-                aria-label="Active Branch"
+        {isPOSWorkspace ? (
+          <header className="cv-topbar cv-topbar--minimal">
+            <div className="cv-topbar-start">
+              <button
+                type="button"
+                className="cv-mobile-toggle"
+                onClick={() => setMobileNavOpen((prev) => !prev)}
+                aria-label="Toggle navigation"
               >
-                {branches.map((branch) => (
-                  <option key={branch.id} value={branch.id}>
-                    {branch.code || `B${branch.id}`} - {branch.name}
-                  </option>
-                ))}
-              </select>
-            )}
-            <button type="button" className="cv-top-icon-btn" aria-label="Search">
-              <i className="fi-rr-search" aria-hidden="true" />
-            </button>
-            <HeaderNotifications />
-            <div className="cv-role-chip">
-              {user?.isSuperAdmin || String(user?.username || "").trim().toUpperCase() === "VOXO"
-                ? "SUPER ADMIN"
-                : user?.role || "USER"}
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 7h16M4 12h16M4 17h16" />
+                </svg>
+              </button>
             </div>
-            <div className="cv-date-chip">
-              {new Date().toLocaleDateString("en-US", {
-                weekday: "short",
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              })}
+          </header>
+        ) : (
+          <header className="cv-topbar">
+            <div className="cv-topbar-start">
+              <button
+                type="button"
+                className="cv-mobile-toggle"
+                onClick={() => setMobileNavOpen((prev) => !prev)}
+                aria-label="Toggle navigation"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 7h16M4 12h16M4 17h16" />
+                </svg>
+              </button>
+              <div className="cv-route-meta">
+                <div className="cv-welcome-title cv-route-title-row">
+                  <span className="cv-route-icon" aria-hidden="true">
+                    <i className={menuIconClasses[activeLink?.label] || "fi-rr-apps"} />
+                  </span>
+                  <span>Welcome, {user?.username || "Operator"}</span>
+                </div>
+                <div className="cv-route-subtitle">{activeLink?.subtitle || "Professional POS operations"}</div>
+                <div className="cv-route-pill">{activeLink?.label || "Workspace"}</div>
+              </div>
             </div>
-            <div className="cv-profile-chip" title={user?.username || "User"}>
-              {(user?.username?.charAt(0) || "U").toUpperCase()}
+
+            <div className="cv-topbar-end">
+              {branches.length > 0 && (
+                <select
+                  value={activeBranchId || ""}
+                  onChange={handleBranchChange}
+                  className="cv-branch-select"
+                  aria-label="Active Branch"
+                >
+                  {branches.map((branch) => (
+                    <option key={branch.id} value={branch.id}>
+                      {branch.code || `B${branch.id}`} - {branch.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button type="button" className="cv-top-icon-btn" aria-label="Search">
+                <i className="fi-rr-search" aria-hidden="true" />
+              </button>
+              <HeaderNotifications />
+              <div className="cv-role-chip">
+                {user?.isSuperAdmin || String(user?.username || "").trim().toUpperCase() === "VOXO"
+                  ? "SUPER ADMIN"
+                  : user?.role || "USER"}
+              </div>
+              <div className="cv-date-chip">
+                {new Date().toLocaleDateString("en-US", {
+                  weekday: "short",
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </div>
+              <div className="cv-profile-chip" title={user?.username || "User"}>
+                {(user?.username?.charAt(0) || "U").toUpperCase()}
+              </div>
             </div>
-          </div>
-        </header>
+          </header>
+        )}
 
         <div className="cv-content-wrap">
           <div className="cv-content">
