@@ -16,6 +16,7 @@ import logo from "../assests/Clogo.jpeg";
 const menuIconClasses = {
   Dashboard: "fi-rr-apps",
   "POS Billing": "fi-rr-cash-register",
+  Orders: "fi-rr-receipt",
   Sales: "fi-rr-chart-line-up",
   Products: "fi-rr-shopping-bag",
   "QR Category": "fi-rr-qrcode",
@@ -59,6 +60,12 @@ export default function MainLayout() {
         label: "POS Billing",
         subtitle: "Fast checkout and order operations",
         permission: "pos.view",
+      },
+      {
+        to: "/order-queue",
+        label: "Orders",
+        subtitle: "Incoming QR orders and order details",
+        permission: "sales.view",
       },
       {
         to: "/sales",
@@ -131,6 +138,12 @@ export default function MainLayout() {
         label: "POS Billing",
         subtitle: "Fast checkout and order operations",
         permission: "pos.view",
+      },
+      {
+        to: "/order-queue",
+        label: "Orders",
+        subtitle: "Incoming QR orders and order details",
+        permission: "sales.view",
       },
       {
         to: "/sales",

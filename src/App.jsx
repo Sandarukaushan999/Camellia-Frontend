@@ -5,6 +5,7 @@ import { useAuth } from "./state/AuthContext.jsx";
 import Login from "./pages/Login.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import POS from "./pages/POS.jsx";
+import Orders from "./pages/Orders.jsx";
 import Sales from "./pages/Sales.jsx";
 import Products from "./pages/Products.jsx";
 import Reports from "./pages/Reports.jsx";
@@ -103,6 +104,14 @@ export default function App() {
           element={
             <ProtectedRoute roles={["ADMIN", "CASHIER"]} permissions={["pos.view"]}>
               <POS />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="order-queue"
+          element={
+            <ProtectedRoute roles={["ADMIN", "CASHIER"]} permissions={["sales.view"]}>
+              <Orders />
             </ProtectedRoute>
           }
         />

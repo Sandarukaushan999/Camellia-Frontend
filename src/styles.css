@@ -1512,6 +1512,8 @@ body {
   min-height: 0;
   margin-top: 0.65rem;
   overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
   padding-right: 0.32rem;
 }
 
@@ -1953,6 +1955,10 @@ body {
   touch-action: manipulation;
 }
 
+.cv-public-flip-page--payment .cv-public-flip-scroll {
+  touch-action: pan-y;
+}
+
 .cv-public-input {
   width: 100%;
   border-radius: 0.7rem;
@@ -2208,6 +2214,210 @@ body {
   background: rgba(239, 68, 68, 0.14);
   border: 1px solid rgba(239, 68, 68, 0.25);
   color: #991b1b;
+}
+
+.cv-page--orders .cv-order-summary-card {
+  border: 1px solid #dde3eb;
+  border-radius: 16px;
+  padding: 0.95rem 1rem;
+  box-shadow: 0 10px 22px rgba(18, 28, 41, 0.08);
+}
+
+.cv-page--orders .cv-order-summary-card--count {
+  background: linear-gradient(145deg, #ece6ff 0%, #ddd5f4 100%);
+}
+
+.cv-page--orders .cv-order-summary-card--items {
+  background: linear-gradient(145deg, #dcf4f6 0%, #cbe8ee 100%);
+}
+
+.cv-page--orders .cv-order-summary-card--value {
+  background: linear-gradient(145deg, #fff5dd 0%, #f8ecce 100%);
+}
+
+.cv-page--orders .cv-order-summary-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #4f5869;
+}
+
+.cv-page--orders .cv-order-summary-value {
+  margin-top: 0.35rem;
+  font-family: var(--cv-font-heading);
+  font-size: 1.3rem;
+  line-height: 1.2;
+  font-weight: 800;
+  color: #1f2937;
+}
+
+.cv-page--orders .cv-order-card {
+  border: 1px solid #d8e0ec;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.08);
+  padding: 0.95rem;
+}
+
+.cv-page--orders .cv-order-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.cv-page--orders .cv-order-invoice-chip,
+.cv-page--orders .cv-order-status-chip,
+.cv-page--orders .cv-order-ref-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.24rem 0.58rem;
+}
+
+.cv-page--orders .cv-order-invoice-chip {
+  background: linear-gradient(135deg, rgba(223, 255, 0, 0.42), rgba(180, 196, 36, 0.5));
+  border: 1px solid rgba(147, 164, 24, 0.44);
+  color: #28350c;
+}
+
+.cv-page--orders .cv-order-status-chip {
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  color: #92400e;
+}
+
+.cv-page--orders .cv-order-ref-chip {
+  background: #f3f6fa;
+  border: 1px solid #d7dee8;
+  color: #4f5869;
+}
+
+.cv-page--orders .cv-order-meta-cell {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 0.56rem 0.62rem;
+}
+
+.cv-page--orders .cv-order-meta-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.cv-page--orders .cv-order-meta-value {
+  margin-top: 0.24rem;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.cv-page--orders .cv-order-items-wrap {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 0.62rem;
+}
+
+.cv-page--orders .cv-order-items-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.73rem;
+  font-weight: 800;
+  color: #334155;
+}
+
+.cv-page--orders .cv-order-items-list {
+  margin-top: 0.5rem;
+  display: grid;
+  gap: 0.34rem;
+}
+
+.cv-page--orders .cv-order-item-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  border: 1px solid #e4e9f2;
+  border-radius: 10px;
+  padding: 0.4rem 0.5rem;
+  background: #fff;
+}
+
+.cv-page--orders .cv-order-item-name {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.cv-page--orders .cv-order-item-meta {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #4b5563;
+  white-space: nowrap;
+}
+
+.cv-page--orders .cv-order-total-box {
+  border: 1px solid #dbe4ef;
+  border-radius: 12px;
+  background: #fff;
+  min-width: 172px;
+  padding: 0.58rem 0.66rem;
+}
+
+.cv-page--orders .cv-order-total-value {
+  margin-top: 0.24rem;
+  font-family: var(--cv-font-heading);
+  font-size: 1.12rem;
+  font-weight: 800;
+  color: #111827;
+}
+
+.cv-page--orders .cv-order-note-box {
+  border: 1px dashed #d7deea;
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 0.6rem 0.68rem;
+}
+
+.cv-page--orders .cv-order-note-value {
+  margin-top: 0.26rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #334155;
+  line-height: 1.4;
+}
+
+.cv-page--orders .cv-order-crm-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: #f3f6fa;
+  border: 1px solid #d7dee8;
+  color: #4f5869;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.cv-page--orders .cv-order-crm-request-card {
+  border: 1px solid #dde4ee;
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 0.62rem 0.68rem;
 }
 
 .cv-page--inventory .cv-inventory-supply-card {

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import HTMLFlipBook from "react-pageflip";
 import { useLocation, useParams } from "react-router-dom";
 import publicApi from "../utils/publicApi.js";
@@ -7,39 +7,53 @@ import { formatBusinessDateTime } from "../utils/timezone.js";
 const PAYMENT_METHOD_OPTIONS = ["CASH", "CARD", "QR", "ONLINE"];
 const CUSTOMER_PROFILE_STORAGE_KEY = "cv_public_customer_profiles_v1";
 const MAX_STORED_CUSTOMERS = 80;
+
 const CATEGORY_ORDER = ["burger", "kottu", "submarine", "cafe", "juice", "rice", "pizza"];
+const QR_CATEGORY_PAGE_KEYS = ["all", ...CATEGORY_ORDER];
 const CATEGORY_META = {
+  all: { label: "ALL", icon: "\uD83D\uDCE6" },
   burger: { label: "Burger", icon: "\uD83C\uDF54" },
   kottu: { label: "Kottu", icon: "\uD83C\uDF5C" },
   submarine: { label: "Submarine", icon: "\uD83E\uDD56" },
-  cafe: { label: "Cafe", icon: "\u2615" },
+  cafe: { label: "Caf\u00e9", icon: "\u2615" },
   juice: { label: "Juice", icon: "\uD83E\uDD64" },
   rice: { label: "Rice", icon: "\uD83C\uDF5A" },
   pizza: { label: "Pizza", icon: "\uD83C\uDF55" },
 };
 
+const STEP_KEYS = [
+  "cover",
+  ...QR_CATEGORY_PAGE_KEYS.map((key) => `category:${key}`),
+  "cart",
+  "payment",
+  "thanks",
+];
+const STEP_INDEX = Object.fromEntries(STEP_KEYS.map((stepKey, index) => [stepKey, index]));
+const FIRST_CATEGORY_STEP = `category:${QR_CATEGORY_PAGE_KEYS[0]}`;
+
+function toCategoryStep(categoryKeyValue) {
+  return `category:${categoryKeyValue}`;
+}
+
 const DEFAULT_ORDER_FORM = {
   customer_name: "",
   customer_phone: "",
+  customer_email: "",
+  customer_address: "",
   table_number: "",
   payment_method: "CASH",
   note: "",
 };
-
-const BookPage = React.forwardRef(function BookPage({ className = "", children }, ref) {
-  return (
-    <div ref={ref} className={`cv-public-flip-page ${className}`}>
-      {children}
-    </div>
-  );
-});
-BookPage.displayName = "BookPage";
 
 function toMoney(amount) {
   return `Rs. ${Number(amount || 0).toLocaleString("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+}
+
+function normalizePhone(value) {
+  return String(value || "").replace(/[^\d+]/g, "").trim().slice(0, 24);
 }
 
 function normalizeCategory(value) {
@@ -54,10 +68,6 @@ function categoryKey(value) {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
-function normalizePhone(value) {
-  return String(value || "").replace(/[^\d+]/g, "").trim().slice(0, 24);
-}
-
 function getDetectedTable(search) {
   const params = new URLSearchParams(search);
   const raw =
@@ -65,27 +75,10 @@ function getDetectedTable(search) {
   return String(raw).trim().slice(0, 40);
 }
 
-function pageSize() {
-  const width = typeof window === "undefined" ? 1200 : window.innerWidth;
-  const height = typeof window === "undefined" ? 900 : window.innerHeight;
-  if (width < 768) {
-    return {
-      w: Math.max(290, Math.min(width - 24, 430)),
-      h: Math.max(560, Math.min(height - 118, 790)),
-    };
-  }
-  return {
-    w: Math.max(420, Math.min(Math.floor((width - 120) / 2), 560)),
-    h: Math.max(640, Math.min(height - 95, 860)),
-  };
-}
-
 function readStoredCustomerProfiles() {
   try {
     const raw = localStorage.getItem(CUSTOMER_PROFILE_STORAGE_KEY);
-    if (!raw) {
-      return {};
-    }
+    if (!raw) return {};
     const parsed = JSON.parse(raw);
     return parsed && typeof parsed === "object" ? parsed : {};
   } catch {
@@ -105,7 +98,6 @@ function trimCustomerProfiles(profileMap = {}) {
 export default function PublicMenu() {
   const { branchCode: routeBranchCode = "" } = useParams();
   const location = useLocation();
-  const bookRef = useRef(null);
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -119,22 +111,20 @@ export default function PublicMenu() {
   const [cart, setCart] = useState({});
   const [orderForm, setOrderForm] = useState(DEFAULT_ORDER_FORM);
   const [orderSuccess, setOrderSuccess] = useState(null);
-  const [currentPage, setCurrentPage] = useState(0);
-  const [size, setSize] = useState(() => pageSize());
-  const [customerProfiles, setCustomerProfiles] = useState(() =>
-    readStoredCustomerProfiles()
-  );
+  const [activeStep, setActiveStep] = useState("cover");
+  const [customerProfiles, setCustomerProfiles] = useState(() => readStoredCustomerProfiles());
+  const [crmLookupState, setCrmLookupState] = useState("idle");
+  const [crmLookupMessage, setCrmLookupMessage] = useState("");
+  const flipBookRef = useRef(null);
 
   const detectedTable = useMemo(() => getDetectedTable(location.search), [location.search]);
 
   useEffect(() => {
     const tableValue = String(detectedTable || "").trim();
-    if (!tableValue) {
-      return;
-    }
+    if (!tableValue) return;
     setOrderForm((prev) => ({
       ...prev,
-      table_number: tableValue,
+      table_number: prev.table_number || tableValue,
     }));
   }, [detectedTable]);
 
@@ -148,6 +138,48 @@ export default function PublicMenu() {
       // ignore storage errors
     }
   }, [customerProfiles]);
+
+  useEffect(() => {
+    const phone = normalizePhone(orderForm.customer_phone);
+    if (!phone || phone.length < 7) {
+      setCrmLookupState("idle");
+      setCrmLookupMessage("");
+      return undefined;
+    }
+
+    let active = true;
+    const timeout = setTimeout(async () => {
+      try {
+        setCrmLookupState("loading");
+        setCrmLookupMessage("");
+        const { data } = await publicApi.get("/public/customer-profile", { params: { phone } });
+        if (!active) return;
+        const customer = data?.customer || null;
+        if (customer) {
+          setOrderForm((prev) => ({
+            ...prev,
+            customer_name: prev.customer_name || customer.full_name || "",
+            customer_email: prev.customer_email || customer.email || "",
+            customer_address: prev.customer_address || customer.address || "",
+          }));
+          setCrmLookupState("found");
+          setCrmLookupMessage("Customer found in CRM. Details auto-filled.");
+        } else {
+          setCrmLookupState("not-found");
+          setCrmLookupMessage("New customer. Submission will require admin CRM approval.");
+        }
+      } catch {
+        if (!active) return;
+        setCrmLookupState("error");
+        setCrmLookupMessage("CRM lookup unavailable. You can still place the order.");
+      }
+    }, 280);
+
+    return () => {
+      active = false;
+      clearTimeout(timeout);
+    };
+  }, [orderForm.customer_phone]);
 
   useEffect(() => {
     let mounted = true;
@@ -165,9 +197,7 @@ export default function PublicMenu() {
           params.branch_id = branchId;
         }
         const { data } = await publicApi.get("/public/menu", { params });
-        if (!mounted) {
-          return;
-        }
+        if (!mounted) return;
         setMenuData({
           branch: data?.branch || null,
           categories: Array.isArray(data?.categories) ? data.categories : [],
@@ -180,9 +210,7 @@ export default function PublicMenu() {
           setMessage(err?.response?.data?.message || "Failed to load menu");
         }
       } finally {
-        if (mounted) {
-          setLoading(false);
-        }
+        if (mounted) setLoading(false);
       }
     };
     load();
@@ -191,45 +219,18 @@ export default function PublicMenu() {
     };
   }, [location.search, routeBranchCode]);
 
-  useEffect(() => {
-    const onResize = () => setSize(pageSize());
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
-
-  const categories = useMemo(() => {
-    const grouped = new Map();
-    (menuData.items || []).forEach((item) => {
-      const name = normalizeCategory(item.category);
-      const key = categoryKey(name);
-      if (!grouped.has(key)) {
-        grouped.set(key, { key, name, items: [] });
+  const categoryItemsByKey = useMemo(() => {
+    const groups = Object.fromEntries(QR_CATEGORY_PAGE_KEYS.map((key) => [key, []]));
+    const allItems = Array.isArray(menuData.items) ? menuData.items : [];
+    groups.all = allItems;
+    allItems.forEach((item) => {
+      const key = categoryKey(item.category);
+      if (key !== "all" && Array.isArray(groups[key])) {
+        groups[key].push(item);
       }
-      grouped.get(key).items.push(item);
     });
-    const rank = new Map(CATEGORY_ORDER.map((key, index) => [key, index]));
-    return Array.from(grouped.values()).sort((a, b) => {
-      const aRank = rank.has(a.key) ? rank.get(a.key) : 999;
-      const bRank = rank.has(b.key) ? rank.get(b.key) : 999;
-      if (aRank !== bRank) {
-        return aRank - bRank;
-      }
-      return a.name.localeCompare(b.name);
-    });
+    return groups;
   }, [menuData.items]);
-
-  const indexPage = 1;
-  const categoryStart = 2;
-  const cartPage = categoryStart + categories.length;
-  const paymentPage = cartPage + 1;
-
-  const categoryPages = useMemo(() => {
-    const map = {};
-    categories.forEach((category, index) => {
-      map[category.key] = categoryStart + index;
-    });
-    return map;
-  }, [categories]);
 
   const cartLines = useMemo(() => {
     const itemsMap = new Map((menuData.items || []).map((item) => [String(item.id), item]));
@@ -254,31 +255,94 @@ export default function PublicMenu() {
     () => cartLines.reduce((sum, line) => sum + Number(line.qty || 0), 0),
     [cartLines]
   );
+  const canPlaceOrder =
+    String(orderForm.customer_name || "").trim().length >= 2 && cartLines.length > 0;
   const matchedProfile = useMemo(() => {
     const key = normalizePhone(orderForm.customer_phone);
     return key ? customerProfiles[key] || null : null;
   }, [customerProfiles, orderForm.customer_phone]);
-  const canPlaceOrder =
-    String(orderForm.customer_name || "").trim().length >= 2 && cartLines.length > 0;
 
-  const goToPage = useCallback((index) => {
-    const api = bookRef.current?.pageFlip?.();
-    if (!api) {
+  const maxStepIndex = orderSuccess ? STEP_INDEX.thanks : STEP_INDEX.payment;
+  const activeStepIndex = STEP_INDEX[activeStep] ?? 0;
+  const isCategoryStep = activeStep.startsWith("category:");
+  const stopFlipGesture = (event) => {
+    event.stopPropagation();
+  };
+
+  const getFlipApi = () => {
+    try {
+      return flipBookRef.current?.pageFlip?.() || null;
+    } catch {
+      return null;
+    }
+  };
+
+  const goToStep = (stepKey) => {
+    const nextIndex = STEP_INDEX[stepKey];
+    if (!Number.isFinite(nextIndex)) return;
+    if (nextIndex > maxStepIndex) return;
+    const api = getFlipApi();
+    if (api) {
+      api.turnToPage(nextIndex);
       return;
     }
-    api.turnToPage(Math.max(0, index));
-  }, []);
+    setActiveStep(stepKey);
+  };
+
+  const goPrev = () => {
+    if (activeStepIndex <= STEP_INDEX.cover) return;
+    const api = getFlipApi();
+    if (api) {
+      api.flipPrev();
+      return;
+    }
+    setActiveStep(STEP_KEYS[activeStepIndex - 1]);
+  };
+
+  const goNext = () => {
+    if (activeStepIndex >= maxStepIndex) return;
+    const api = getFlipApi();
+    if (api) {
+      api.flipNext();
+      return;
+    }
+    setActiveStep(STEP_KEYS[activeStepIndex + 1]);
+  };
+
+  const handlePageFlip = (event) => {
+    const nextIndex = Number(event?.data ?? 0);
+    if (!Number.isFinite(nextIndex)) return;
+    if (nextIndex > maxStepIndex) {
+      const api = getFlipApi();
+      if (api) api.turnToPage(maxStepIndex);
+      setActiveStep(STEP_KEYS[maxStepIndex]);
+      return;
+    }
+    setActiveStep(STEP_KEYS[Math.max(0, Math.min(STEP_KEYS.length - 1, nextIndex))] || "cover");
+  };
+
+  useEffect(() => {
+    if (activeStepIndex <= maxStepIndex) return;
+    setActiveStep(STEP_KEYS[maxStepIndex]);
+  }, [activeStepIndex, maxStepIndex]);
+
+  useEffect(() => {
+    const api = getFlipApi();
+    if (!api) return;
+    const target = STEP_INDEX[activeStep] ?? 0;
+    const current = Number(api.getCurrentPageIndex?.() ?? 0);
+    if (current !== target) {
+      api.turnToPage(target);
+    }
+  }, [activeStep]);
 
   const changeQty = (productId, delta) => {
     const key = String(productId);
     setCart((prev) => {
       const nextQty = Math.max(0, Number(prev[key] || 0) + delta);
       const next = { ...prev };
-      if (nextQty <= 0) {
-        delete next[key];
-      } else {
-        next[key] = nextQty;
-      }
+      if (nextQty <= 0) delete next[key];
+      else next[key] = nextQty;
       return next;
     });
   };
@@ -286,15 +350,15 @@ export default function PublicMenu() {
   const handlePhoneChange = (value) => {
     setOrderForm((prev) => ({ ...prev, customer_phone: value }));
     const key = normalizePhone(value);
-    if (!key || !customerProfiles[key]) {
-      return;
-    }
-    const profile = customerProfiles[key];
+    const profile = key ? customerProfiles[key] : null;
+    if (!profile) return;
     setOrderForm((prev) => ({
       ...prev,
       customer_phone: value,
       customer_name: prev.customer_name || profile.customer_name || "",
-      table_number: detectedTable || prev.table_number || profile.table_number || "",
+      customer_email: prev.customer_email || profile.customer_email || "",
+      customer_address: prev.customer_address || profile.customer_address || "",
+      table_number: prev.table_number || profile.table_number || detectedTable || "",
       payment_method:
         prev.payment_method === "CASH" && profile.payment_method
           ? profile.payment_method
@@ -303,26 +367,8 @@ export default function PublicMenu() {
     }));
   };
 
-  const updateProfileFromOrder = () => {
-    const key = normalizePhone(orderForm.customer_phone);
-    if (!key) {
-      return;
-    }
-    const profile = {
-      customer_name: String(orderForm.customer_name || "").trim(),
-      table_number: String(detectedTable || orderForm.table_number || "").trim(),
-      payment_method: orderForm.payment_method,
-      note: String(orderForm.note || "").trim(),
-      updated_at: new Date().toISOString(),
-    };
-    setCustomerProfiles((prev) => trimCustomerProfiles({ ...prev, [key]: profile }));
-  };
-
   const submitOrder = async () => {
-    if (!canPlaceOrder) {
-      setMessage("Enter customer name and add items first");
-      return;
-    }
+    if (!canPlaceOrder) return;
     setSubmitting(true);
     setMessage("");
     try {
@@ -331,16 +377,18 @@ export default function PublicMenu() {
         branch_code: menuData?.branch?.code || undefined,
         customer_name: orderForm.customer_name,
         customer_phone: orderForm.customer_phone || undefined,
+        customer_email: orderForm.customer_email || undefined,
+        customer_address: orderForm.customer_address || undefined,
         order_type: "DINE-IN",
-        table_number: detectedTable || orderForm.table_number || undefined,
+        table_number: orderForm.table_number || undefined,
         payment_method: orderForm.payment_method,
         note: orderForm.note || undefined,
         items: cartLines.map((line) => ({ product_id: line.productId, qty: line.qty })),
       };
       const { data } = await publicApi.post("/public/orders", payload);
       setOrderSuccess(data || null);
-      updateProfileFromOrder();
       setCart({});
+      setActiveStep("thanks");
     } catch (err) {
       console.error("Failed to submit menu order:", err);
       setMessage(err?.response?.data?.message || "Failed to submit order");
@@ -351,22 +399,9 @@ export default function PublicMenu() {
 
   const startNewOrder = () => {
     setOrderSuccess(null);
+    setMessage("");
     setCart({});
-    goToPage(indexPage);
-  };
-
-  const inCategoryFlow =
-    currentPage === indexPage || (currentPage >= categoryStart && currentPage < cartPage);
-
-  const stopFlipPropagation = (event) => {
-    event.stopPropagation();
-  };
-
-  const noFlipProps = {
-    onPointerDown: stopFlipPropagation,
-    onMouseDown: stopFlipPropagation,
-    onTouchStart: stopFlipPropagation,
-    onTouchMove: stopFlipPropagation,
+    setActiveStep(FIRST_CATEGORY_STEP);
   };
 
   return (
@@ -375,283 +410,154 @@ export default function PublicMenu() {
       <div className="relative mx-auto max-w-7xl p-3 md:p-5">
         <div className="cv-public-book-root">
           <HTMLFlipBook
-            key={`menu-book-${categories.length}`}
-            ref={bookRef}
-            width={size.w}
-            height={size.h}
-            minWidth={290}
-            maxWidth={580}
-            minHeight={560}
-            maxHeight={900}
-            size="fixed"
-            usePortrait
-            autoSize
-            showCover
+            ref={flipBookRef}
+            className="cv-public-flipbook"
+            width={440}
+            height={700}
+            size="stretch"
+            minWidth={300}
+            maxWidth={1200}
+            minHeight={520}
+            maxHeight={860}
+            maxShadowOpacity={0.22}
             drawShadow
-            maxShadowOpacity={0.56}
-            flippingTime={1150}
+            usePortrait
+            showCover
             mobileScrollSupport
             disableFlipByClick
-            useMouseEvents={currentPage !== paymentPage}
-            swipeDistance={34}
-            className="cv-public-flipbook"
-            onFlip={(event) => setCurrentPage(Number(event?.data || 0))}
+            useMouseEvents
+            swipeDistance={68}
+            onFlip={handlePageFlip}
           >
-            <BookPage className="cv-public-flip-page--cover">
-              <article className="cv-public-cover-poster">
+            <div className="cv-public-flip-page cv-public-flip-page--cover">
+              <article className="cv-public-cover-poster min-h-[70vh]">
                 <div className="cv-public-cover-accent" />
                 <div className="cv-public-cover-headline">
                   <p className="cv-public-cover-kicker">Camellia Cafe</p>
-                  <h1>
-                    Taste the
-                    <br />
-                    Signature Menu
-                  </h1>
-                  <p>Flip category pages, then payment and place order at the end.</p>
+                  <h1>Signature Menu</h1>
+                  <p>Browse categories, add items, review cart, then place your order.</p>
                 </div>
                 <div className="cv-public-cover-price-tag">
-                  <span>Live Menu</span>
-                  <strong>Open</strong>
-                </div>
-                <div className="cv-public-cover-actions">
-                  <button
-                    type="button"
-                    onClick={() => goToPage(indexPage)}
-                    className="cv-public-submit-btn cv-public-cover-open-btn"
-                  >
-                    Open Menu Book
-                  </button>
-                  <p>Swipe or drag corners for realistic page turns</p>
+                  <span>Live</span>
+                  <strong>MENU</strong>
                 </div>
               </article>
-            </BookPage>
+            </div>
 
-            <BookPage className="cv-public-flip-page--intro">
-              <div className="cv-public-flip-content">
-                <header className="cv-public-flip-header">
-                  <p className="cv-public-menu-kicker">Camellia Cafe & Restaurant</p>
-                  <h2 className="cv-public-flip-title">Category Index</h2>
-                  <p className="cv-public-menu-subtitle">
-                    {menuData.branch
-                      ? `${menuData.branch.code} - ${menuData.branch.name}`
-                      : "Loading branch..."}
-                  </p>
-                </header>
-
-                <div className="cv-public-flip-scroll">
-                  <div className="cv-public-menu-hero-meta">
-                    <span className="cv-public-chip">{"\uD83D\uDCE6"} ALL</span>
-                    <span className="cv-public-chip">{cartCount} items in cart</span>
-                    <span className="cv-public-chip">
-                      {detectedTable ? `Table #${detectedTable}` : "DINE-IN only"}
-                    </span>
-                    <span className="cv-public-chip">
-                      {menuData.generated_at
-                        ? `Updated ${formatBusinessDateTime(menuData.generated_at, {
-                            month: "short",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}`
-                        : "Live menu"}
-                    </span>
-                  </div>
-
-                  {loading ? (
-                    <div className="mt-4 rounded-2xl border border-white/50 bg-white/70 p-8 text-center text-sm text-slate-600">
-                      Loading categories...
-                    </div>
-                  ) : categories.length === 0 ? (
-                    <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-white/85 p-8 text-center text-sm text-slate-600">
-                      No active menu items available.
-                    </div>
-                  ) : (
-                    <div className="cv-public-category-grid mt-4">
-                      {categories.map((category) => {
-                        const meta = CATEGORY_META[category.key] || {
-                          label: category.name,
-                          icon: "\uD83D\uDCE6",
-                        };
-                        return (
-                          <button
-                            key={category.key}
-                            type="button"
-                            onClick={() => goToPage(categoryPages[category.key])}
-                            className="cv-public-category-card"
-                          >
-                            <div className="cv-public-category-card-head">
-                              <span className="cv-public-category-icon">{meta.icon}</span>
-                              <span className="cv-public-category-name">{meta.label}</span>
-                            </div>
-                            <span className="cv-public-category-count">{category.items.length} items</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                <div className="cv-public-flip-footer">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (categories.length > 0) {
-                        goToPage(categoryPages[categories[0].key]);
-                      }
-                    }}
-                    disabled={categories.length === 0}
-                    className="cv-public-submit-btn cv-public-cover-open-btn"
-                  >
-                    Start First Category
-                  </button>
-                </div>
-              </div>
-            </BookPage>
-
-            {categories.map((category) => {
-              const meta = CATEGORY_META[category.key] || {
-                label: category.name,
+            {QR_CATEGORY_PAGE_KEYS.map((categoryPageKey) => {
+              const stepKey = toCategoryStep(categoryPageKey);
+              const meta = CATEGORY_META[categoryPageKey] || {
+                label: normalizeCategory(categoryPageKey),
                 icon: "\uD83D\uDCE6",
               };
+              const categoryItems = loading ? [] : categoryItemsByKey[categoryPageKey] || [];
               return (
-                <BookPage key={`cat-${category.key}`} className="cv-public-flip-page--menu">
+                <div key={stepKey} className="cv-public-flip-page cv-public-flip-page--categories">
                   <div className="cv-public-flip-content">
                     <header className="cv-public-flip-header">
-                      <p className="cv-public-menu-kicker">
+                      <p className="cv-public-menu-kicker">Category</p>
+                      <h2 className="cv-public-flip-title">
                         {meta.icon} {meta.label}
-                      </p>
-                      <h2 className="cv-public-flip-title">{meta.label} Menu</h2>
+                      </h2>
                       <p className="cv-public-menu-subtitle">
-                        {category.items.length} items available
+                        {loading ? "Loading..." : `${categoryItems.length} items`}
                       </p>
                     </header>
-
                     <div className="cv-public-flip-scroll">
                       <div className="cv-public-category-chip-row">
-                        {categories.map((group) => {
-                          const groupMeta = CATEGORY_META[group.key] || {
-                            label: group.name,
+                        {QR_CATEGORY_PAGE_KEYS.map((chipKey) => {
+                          const chipMeta = CATEGORY_META[chipKey] || {
+                            label: normalizeCategory(chipKey),
                             icon: "\uD83D\uDCE6",
                           };
                           return (
                             <button
-                              key={`chip-${group.key}`}
+                              key={chipKey}
                               type="button"
-                              onClick={() => goToPage(categoryPages[group.key])}
-                              className={`cv-public-cat-chip ${group.key === category.key ? "is-active" : ""}`}
+                              onClick={() => goToStep(toCategoryStep(chipKey))}
+                              className={`cv-public-cat-chip ${
+                                chipKey === categoryPageKey ? "is-active" : ""
+                              }`}
                             >
-                              {groupMeta.icon} {groupMeta.label}
+                              {chipMeta.icon} {chipMeta.label}
                             </button>
                           );
                         })}
                       </div>
-
-                      <div className="cv-public-category-items-grid mt-3">
-                        {category.items.map((item) => {
-                          const qty = Number(cart[String(item.id)] || 0);
-                          return (
-                            <article
-                              key={item.id}
-                              className="cv-public-menu-card cv-public-menu-card--category"
-                            >
-                              <div className="cv-public-menu-image-wrap">
-                                {item.image_url ? (
-                                  <img
-                                    src={item.image_url}
-                                    alt={item.name}
-                                    className="cv-public-menu-image"
-                                  />
-                                ) : (
-                                  <div className="cv-public-menu-image-placeholder">
-                                    <i className="fi-rr-utensils" aria-hidden="true" />
-                                  </div>
-                                )}
-                              </div>
-                              <div className="p-3">
-                                <h3 className="line-clamp-1 text-sm font-semibold text-slate-900">
-                                  {item.name}
-                                </h3>
-                                <div className="mt-2 flex items-center justify-between">
-                                  <span className="text-sm font-bold text-slate-900">
-                                    {toMoney(item.price)}
-                                  </span>
-                                  <div className="flex items-center gap-1">
-                                    <button
-                                      type="button"
-                                      onClick={() => changeQty(item.id, -1)}
-                                      className="cv-public-qty-btn"
-                                      disabled={qty <= 0}
-                                      {...noFlipProps}
-                                    >
-                                      -
-                                    </button>
-                                    <span className="w-6 text-center text-sm font-semibold text-slate-700">
-                                      {qty}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => changeQty(item.id, 1)}
-                                      className="cv-public-qty-btn"
-                                      {...noFlipProps}
-                                    >
-                                      +
-                                    </button>
+                      {categoryItems.length === 0 && !loading ? (
+                        <div className="cv-public-flip-note mt-3">
+                          <h3>No items in {meta.label}</h3>
+                          <p>Use another category page to continue browsing.</p>
+                        </div>
+                      ) : (
+                        <div className="cv-public-category-items-grid mt-3">
+                          {categoryItems.map((item) => {
+                            const qty = Number(cart[String(item.id)] || 0);
+                            return (
+                              <article
+                                key={String(item.id)}
+                                className="cv-public-menu-card cv-public-menu-card--category"
+                              >
+                                <div className="cv-public-menu-image-wrap">
+                                  {item.image_url ? (
+                                    <img src={item.image_url} alt={item.name} className="cv-public-menu-image" />
+                                  ) : (
+                                    <div className="cv-public-menu-image-placeholder">No Image</div>
+                                  )}
+                                </div>
+                                <div className="p-3">
+                                  <h3 className="text-sm font-extrabold text-slate-900">{item.name}</h3>
+                                  <p className="text-xs font-semibold text-slate-500">
+                                    {normalizeCategory(item.category)}
+                                  </p>
+                                  <div className="mt-2 flex items-center justify-between">
+                                    <span className="text-sm font-black text-slate-900">{toMoney(item.price)}</span>
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => changeQty(item.id, -1)}
+                                        className="cv-public-qty-btn"
+                                        disabled={qty <= 0}
+                                      >
+                                        -
+                                      </button>
+                                      <span className="w-6 text-center text-sm font-black">{qty}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => changeQty(item.id, 1)}
+                                        className="cv-public-qty-btn"
+                                      >
+                                        +
+                                      </button>
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
-                            </article>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    <div className="cv-public-flip-footer cv-public-flip-footer--split">
-                      <button
-                        type="button"
-                        onClick={() => goToPage(cartPage)}
-                        className="cv-public-submit-btn cv-public-cover-open-btn"
-                      >
-                        Go To Cart ({cartCount})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => goToPage(paymentPage)}
-                        className="cv-public-soft-btn cv-public-secondary-btn"
-                      >
-                        Skip to Payment
-                      </button>
+                              </article>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   </div>
-                </BookPage>
+                </div>
               );
             })}
 
-            <BookPage className="cv-public-flip-page--cart">
+            <div className="cv-public-flip-page cv-public-flip-page--cart">
               <div className="cv-public-flip-content">
                 <header className="cv-public-flip-header">
-                  <p className="cv-public-menu-kicker">Cart Summary</p>
+                  <p className="cv-public-menu-kicker">Cart</p>
                   <h2 className="cv-public-flip-title">Your Order</h2>
-                  <p className="cv-public-menu-subtitle">
-                    {cartCount > 0
-                      ? `${cartCount} items selected`
-                      : "Add menu items to build your order"}
-                  </p>
+                  <p className="cv-public-menu-subtitle">{cartCount} items</p>
                 </header>
-
-                <div className="cv-public-flip-scroll" {...noFlipProps}>
+                <div className="cv-public-flip-scroll">
                   {cartLines.length === 0 ? (
                     <div className="cv-public-flip-note">
                       <h3>Your cart is empty</h3>
-                      <p>Go back to category pages and tap + to add items.</p>
+                      <p>Add items from Categories.</p>
                     </div>
                   ) : (
                     <div className="cv-public-cart-panel cv-public-cart-panel--flat">
-                      <div className="cv-public-cart-header">
-                        <h3 className="text-sm font-extrabold text-slate-900">Order Items</h3>
-                        <span className="text-xs font-semibold text-slate-600">
-                          {cartLines.length} lines
-                        </span>
-                      </div>
                       <div className="cv-public-cart-lines">
                         {cartLines.map((line) => (
                           <div key={`cart-${line.productId}`} className="cv-public-cart-line">
@@ -659,47 +565,17 @@ export default function PublicMenu() {
                               <div className="truncate text-sm font-bold text-slate-900">
                                 {line.item?.name}
                               </div>
-                              <div className="text-xs font-medium text-slate-500">
-                                {line.item?.category || "Other"}
-                              </div>
-                              <div className="mt-1 text-xs font-semibold text-slate-700">
-                                {toMoney(line.item?.price)} each
-                              </div>
+                              <div className="text-xs text-slate-500">{toMoney(line.item?.price)} each</div>
                             </div>
-                            <div className="text-right">
-                              <div className="flex items-center justify-end gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => changeQty(line.productId, -1)}
-                                  className="cv-public-qty-btn"
-                                  {...noFlipProps}
-                                >
-                                  -
-                                </button>
-                                <span className="w-6 text-center text-sm font-bold text-slate-800">
-                                  {line.qty}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => changeQty(line.productId, 1)}
-                                  className="cv-public-qty-btn"
-                                  {...noFlipProps}
-                                >
-                                  +
-                                </button>
-                              </div>
-                              <div className="mt-1 text-sm font-extrabold text-slate-900">
-                                {toMoney(line.lineTotal)}
-                              </div>
+                            <div className="text-right text-sm font-extrabold text-slate-900">
+                              x{line.qty} | {toMoney(line.lineTotal)}
                             </div>
                           </div>
                         ))}
                       </div>
-
                       <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                        <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          <span>Estimated Total</span>
-                          <span>{cartCount} items</span>
+                        <div className="text-xs font-semibold uppercase text-slate-500">
+                          Estimated Total
                         </div>
                         <div className="mt-1 text-lg font-extrabold text-slate-900">
                           {toMoney(cartTotal)}
@@ -708,261 +584,205 @@ export default function PublicMenu() {
                     </div>
                   )}
                 </div>
-
-                <div className="cv-public-flip-footer cv-public-flip-footer--split">
-                  <button
-                    type="button"
-                    onClick={() => goToPage(indexPage)}
-                    className="cv-public-secondary-btn"
-                  >
-                    Back to Categories
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => goToPage(paymentPage)}
-                    className="cv-public-submit-btn cv-public-cover-open-btn"
-                    disabled={cartLines.length === 0}
-                  >
-                    Continue To Payment
-                  </button>
-                </div>
               </div>
-            </BookPage>
+            </div>
 
-            <BookPage className="cv-public-flip-page--payment">
+            <div className="cv-public-flip-page cv-public-flip-page--payment">
               <div className="cv-public-flip-content">
                 <header className="cv-public-flip-header">
                   <p className="cv-public-menu-kicker">Payment</p>
                   <h2 className="cv-public-flip-title">Place Your Order</h2>
-                  <p className="cv-public-menu-subtitle">
-                    DINE-IN only. Fill details and submit directly from this page.
-                  </p>
+                  <p className="cv-public-menu-subtitle">DINE-IN only</p>
                 </header>
+                <div className="cv-public-flip-scroll">
+                  <form
+                    className="space-y-3"
+                    onPointerDownCapture={stopFlipGesture}
+                    onTouchStartCapture={stopFlipGesture}
+                    onMouseDownCapture={stopFlipGesture}
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      submitOrder();
+                    }}
+                  >
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-bold uppercase text-slate-600">
+                        Your name *
+                      </span>
+                      <input
+                        type="text"
+                        className="cv-public-input"
+                        value={orderForm.customer_name}
+                        onChange={(event) =>
+                          setOrderForm((prev) => ({ ...prev, customer_name: event.target.value }))
+                        }
+                        placeholder="Customer name"
+                        required
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-bold uppercase text-slate-600">
+                        Phone number
+                      </span>
+                      <input
+                        type="tel"
+                        className="cv-public-input"
+                        value={orderForm.customer_phone}
+                        onChange={(event) => handlePhoneChange(normalizePhone(event.target.value))}
+                        placeholder="07xxxxxxxx"
+                      />
+                    </label>
+                    {crmLookupMessage && (
+                      <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700">
+                        {crmLookupMessage}
+                      </div>
+                    )}
+                    {matchedProfile && (
+                      <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800">
+                        Returning customer detected.
+                      </div>
+                    )}
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <input
+                        type="email"
+                        className="cv-public-input"
+                        value={orderForm.customer_email}
+                        onChange={(event) =>
+                          setOrderForm((prev) => ({ ...prev, customer_email: event.target.value }))
+                        }
+                        placeholder="name@example.com"
+                      />
+                      <input
+                        type="text"
+                        className="cv-public-input"
+                        value={orderForm.customer_address}
+                        onChange={(event) =>
+                          setOrderForm((prev) => ({ ...prev, customer_address: event.target.value }))
+                        }
+                        placeholder="Optional address"
+                      />
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="cv-public-order-type-fixed">DINE-IN</div>
+                      <select
+                        className="cv-public-input"
+                        value={orderForm.payment_method}
+                        onChange={(event) =>
+                          setOrderForm((prev) => ({ ...prev, payment_method: event.target.value }))
+                        }
+                      >
+                        {PAYMENT_METHOD_OPTIONS.map((method) => (
+                          <option key={method} value={method}>
+                            {method}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <input
+                      type="text"
+                      className="cv-public-input"
+                      value={orderForm.table_number}
+                      onChange={(event) =>
+                        setOrderForm((prev) => ({ ...prev, table_number: event.target.value }))
+                      }
+                      placeholder="Table no"
+                    />
+                    {detectedTable && (
+                      <p className="text-xs font-semibold text-slate-500">Auto-detected from QR code</p>
+                    )}
+                    <textarea
+                      className="cv-public-input min-h-[84px] resize-y"
+                      value={orderForm.note}
+                      onChange={(event) => setOrderForm((prev) => ({ ...prev, note: event.target.value }))}
+                      placeholder="Special notes"
+                    />
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <div className="text-xs font-semibold uppercase text-slate-500">Estimated Total</div>
+                      <div className="mt-1 text-xl font-black text-slate-900">{toMoney(cartTotal)}</div>
+                    </div>
+                    <button type="submit" className="cv-public-submit-btn" disabled={!canPlaceOrder || submitting}>
+                      {submitting ? "Placing..." : "Place Order"}
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </div>
 
-                <div className="cv-public-flip-scroll" {...noFlipProps}>
+            <div className="cv-public-flip-page cv-public-flip-page--thanks">
+              <div className="cv-public-flip-content">
+                <header className="cv-public-flip-header">
+                  <p className="cv-public-menu-kicker">Order Complete</p>
+                  <h2 className="cv-public-flip-title">Thank You</h2>
+                </header>
+                <div className="cv-public-flip-scroll">
                   {orderSuccess ? (
                     <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-                      <h3 className="text-base font-extrabold text-emerald-900">
-                        Order placed successfully
-                      </h3>
-                      <p className="mt-1 text-sm font-semibold text-emerald-800">
-                        Reference:{" "}
-                        <span className="rounded-md bg-white px-2 py-1 font-black text-emerald-900">
-                          {orderSuccess.reference || "-"}
-                        </span>
-                      </p>
-                      <p className="mt-2 text-xs font-semibold text-emerald-700">
-                        Your order is now queued for staff confirmation.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={startNewOrder}
-                        className="cv-public-submit-btn mt-4"
-                      >
+                      <div className="text-sm font-semibold text-emerald-900">
+                        Reference: {orderSuccess.reference || "-"}
+                      </div>
+                      <div className="mt-2 text-sm font-semibold text-emerald-900">
+                        Invoice: {orderSuccess.invoice_number || "-"}
+                      </div>
+                      <button type="button" onClick={startNewOrder} className="cv-public-submit-btn mt-4">
                         Start New Order
                       </button>
                     </div>
                   ) : (
-                    <form
-                      className="space-y-3"
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        submitOrder();
-                      }}
-                      {...noFlipProps}
-                    >
-                      <label className="block">
-                        <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-600">
-                          Your name *
-                        </span>
-                        <input
-                          type="text"
-                          className="cv-public-input"
-                          value={orderForm.customer_name}
-                          onChange={(event) =>
-                            setOrderForm((prev) => ({
-                              ...prev,
-                              customer_name: event.target.value,
-                            }))
-                          }
-                          placeholder="Customer name"
-                          required
-                          {...noFlipProps}
-                        />
-                      </label>
-
-                      <label className="block">
-                        <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-600">
-                          Phone number
-                        </span>
-                        <input
-                          type="tel"
-                          className="cv-public-input"
-                          value={orderForm.customer_phone}
-                          onChange={(event) => handlePhoneChange(normalizePhone(event.target.value))}
-                          placeholder="07xxxxxxxx"
-                          {...noFlipProps}
-                        />
-                      </label>
-                      {matchedProfile && (
-                        <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800">
-                          Returning customer detected. Saved details were auto-filled.
-                        </div>
-                      )}
-
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <label className="block">
-                          <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-600">
-                            Order type
-                          </span>
-                          <div className="cv-public-order-type-fixed">DINE-IN</div>
-                        </label>
-
-                        <label className="block">
-                          <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-600">
-                            Payment
-                          </span>
-                          <select
-                            className="cv-public-input"
-                            value={orderForm.payment_method}
-                            onChange={(event) =>
-                              setOrderForm((prev) => ({
-                                ...prev,
-                                payment_method: event.target.value,
-                              }))
-                            }
-                            {...noFlipProps}
-                          >
-                            {PAYMENT_METHOD_OPTIONS.map((method) => (
-                              <option key={method} value={method}>
-                                {method}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      </div>
-
-                      <label className="block">
-                        <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-600">
-                          Table number
-                        </span>
-                        <input
-                          type="text"
-                          className="cv-public-input"
-                          value={detectedTable || orderForm.table_number}
-                          onChange={(event) =>
-                            setOrderForm((prev) => ({
-                              ...prev,
-                              table_number: event.target.value,
-                            }))
-                          }
-                          placeholder="Table no"
-                          readOnly={Boolean(detectedTable)}
-                          {...noFlipProps}
-                        />
-                        {detectedTable && (
-                          <p className="mt-1 text-xs font-semibold text-slate-500">
-                            Auto-detected from QR code
-                          </p>
-                        )}
-                      </label>
-
-                      <label className="block">
-                        <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-600">
-                          Special notes
-                        </span>
-                        <textarea
-                          className="cv-public-input min-h-[84px] resize-y"
-                          value={orderForm.note}
-                          onChange={(event) =>
-                            setOrderForm((prev) => ({
-                              ...prev,
-                              note: event.target.value,
-                            }))
-                          }
-                          placeholder="Any preferences..."
-                          {...noFlipProps}
-                        />
-                      </label>
-
-                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                        <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          <span>Estimated total</span>
-                          <span>{cartCount} items</span>
-                        </div>
-                        <div className="mt-1 text-xl font-black text-slate-900">
-                          {toMoney(cartTotal)}
-                        </div>
-                      </div>
-
-                    </form>
-                  )}
-                </div>
-
-                <div className="cv-public-flip-footer cv-public-flip-footer--split">
-                  <button
-                    type="button"
-                    onClick={() => goToPage(cartPage)}
-                    className="cv-public-secondary-btn"
-                  >
-                    Back to Cart
-                  </button>
-                  {!orderSuccess && (
-                    <button
-                      type="button"
-                      onClick={submitOrder}
-                      className="cv-public-submit-btn cv-public-cover-open-btn"
-                      disabled={!canPlaceOrder || submitting}
-                    >
-                      {submitting ? "Placing..." : "Place Order"}
-                    </button>
+                    <div className="cv-public-flip-note">
+                      <h3>No completed order</h3>
+                      <p>Place order from Payment page.</p>
+                    </div>
                   )}
                 </div>
               </div>
-            </BookPage>
+            </div>
           </HTMLFlipBook>
         </div>
 
         <div className="cv-public-book-controls cv-public-book-controls--wide">
           <button
             type="button"
-            onClick={() => goToPage(0)}
-            className={`cv-public-book-nav-btn ${currentPage === 0 ? "is-active" : ""}`}
+            onClick={() => goToStep("cover")}
+            className={`cv-public-book-nav-btn ${activeStep === "cover" ? "is-active" : ""}`}
           >
             Cover
           </button>
           <button
             type="button"
-            onClick={() => goToPage(indexPage)}
-            className={`cv-public-book-nav-btn ${inCategoryFlow ? "is-active" : ""}`}
+            onClick={() => goToStep(FIRST_CATEGORY_STEP)}
+            className={`cv-public-book-nav-btn ${isCategoryStep ? "is-active" : ""}`}
           >
             Categories
           </button>
           <button
             type="button"
-            onClick={() => goToPage(cartPage)}
-            className={`cv-public-book-nav-btn ${currentPage === cartPage ? "is-active" : ""}`}
+            onClick={() => goToStep("cart")}
+            className={`cv-public-book-nav-btn ${activeStep === "cart" ? "is-active" : ""}`}
           >
             Cart
           </button>
           <button
             type="button"
-            onClick={() => goToPage(paymentPage)}
-            className={`cv-public-book-nav-btn ${currentPage === paymentPage ? "is-active" : ""}`}
+            onClick={() => goToStep("payment")}
+            className={`cv-public-book-nav-btn ${
+              activeStep === "payment" || activeStep === "thanks" ? "is-active" : ""
+            }`}
           >
             Payment
           </button>
           <button
             type="button"
-            onClick={() => bookRef.current?.pageFlip?.()?.flipPrev()}
+            onClick={goPrev}
             className="cv-public-book-nav-btn"
+            disabled={activeStepIndex <= STEP_INDEX.cover}
           >
             Prev
           </button>
           <button
             type="button"
-            onClick={() => bookRef.current?.pageFlip?.()?.flipNext()}
+            onClick={goNext}
             className="cv-public-book-nav-btn"
+            disabled={activeStepIndex >= maxStepIndex}
           >
             Next
           </button>

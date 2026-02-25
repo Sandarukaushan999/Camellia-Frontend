@@ -13,6 +13,8 @@ export default function Receipt({ orderData }) {
     orderType,
     tableNumber,
     customerName,
+    customerPhone,
+    note,
     cashier,
     items = [],
     subtotal = 0,
@@ -300,10 +302,22 @@ export default function Receipt({ orderData }) {
               <span>: {tableNumber}</span>
             </div>
           )}
-          {(orderType === "DELIVERY" && customerName) && (
+          {customerName && (
             <div className="receipt-info-row">
               <span className="receipt-info-label">Customer</span>
               <span>: {customerName}</span>
+            </div>
+          )}
+          {customerPhone && (
+            <div className="receipt-info-row">
+              <span className="receipt-info-label">Mobile</span>
+              <span>: {customerPhone}</span>
+            </div>
+          )}
+          {note && (
+            <div className="receipt-info-row">
+              <span className="receipt-info-label">Note</span>
+              <span>: {note}</span>
             </div>
           )}
           <div className="receipt-info-row">

@@ -39,6 +39,13 @@ const DEFAULT_PRINTER_SETTINGS = {
   charsPerLine: 48,
   timeoutMs: 4000,
 };
+const POS_RECALL_STORAGE_KEY = "cv_pos_recall_held_order";
+const DEFAULT_SETTLEMENT_CONTEXT = {
+  heldOrderId: null,
+  invoiceNumber: "",
+  reference: "",
+  note: "",
+};
 
 function loadShopInfoFromStorage() {
   const fallback = {
@@ -81,6 +88,8 @@ export default function POS() {
   const [showReceipt, setShowReceipt] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
   const [customerPhone, setCustomerPhone] = useState("");
+  const [checkoutChannel, setCheckoutChannel] = useState("POS");
+  const [settlementContext, setSettlementContext] = useState(DEFAULT_SETTLEMENT_CONTEXT);
   const [crmCustomerName, setCrmCustomerName] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [customerLookupStatus, setCustomerLookupStatus] = useState("idle"); // idle | loading | found | not-found | error
@@ -281,6 +290,7 @@ export default function POS() {
     setCustomerLookupMessage("");
     setLoyaltyPreview(null);
     setLoyaltyPointsToRedeem("");
+    setCheckoutChannel("POS");
   };
 
   const lookupCustomerByPhone = async () => {
@@ -597,6 +607,7 @@ export default function POS() {
       setCustomerPhone("");
       setCrmCustomerName("");
       clearSelectedCustomer();
+      setSettlementContext(DEFAULT_SETTLEMENT_CONTEXT);
 
       if (showHeldOrdersModal) {
         loadHeldOrders();
@@ -622,36 +633,86 @@ export default function POS() {
     }, 0);
   };
 
+  const applyHeldOrderToPOS = (heldOrder, { closeHeldModal = false } = {}) => {
+    const heldItems = Array.isArray(heldOrder?.items) ? heldOrder.items : [];
+    if (heldItems.length === 0) {
+      setMessage("Held order has no items");
+      setTimeout(() => setMessage(""), 2500);
+      return false;
+    }
+
+    clearSelectedCustomer();
+    setCart(
+      heldItems.map((item) => ({
+        id: item.product_id,
+        name: item.name,
+        qty: parseFloat(item.qty) || 1,
+        price: parseFloat(item.price) || 0,
+        category: item.category || null,
+      }))
+    );
+    setOrderType(heldOrder.order_type || "DINE-IN");
+    setTableNumber(heldOrder.table_number || "");
+    setCustomerName(heldOrder.customer_name || "");
+    setCrmCustomerName(heldOrder.customer_name || "");
+    setCustomerPhone(heldOrder.customer_phone || "");
+    setSettlementContext({
+      heldOrderId: Number(heldOrder?.id) || null,
+      invoiceNumber: String(
+        heldOrder?.invoice_number || heldOrder?.meta?.invoice_number || ""
+      ).trim(),
+      reference: String(heldOrder?.reference || heldOrder?.meta?.reference || "").trim(),
+      note: String(heldOrder?.meta?.note || heldOrder?.note || "").trim(),
+    });
+    setCheckoutChannel(String(heldOrder?.meta?.channel || "WEB").trim().toUpperCase() || "WEB");
+    setPaymentMethod(
+      String(heldOrder?.meta?.payment_method || "CASH")
+        .trim()
+        .toUpperCase() || "CASH"
+    );
+    setCashGiven("");
+    setOrderId(heldOrder.id || null);
+    if (closeHeldModal) {
+      setShowHeldOrdersModal(false);
+    }
+    return true;
+  };
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(POS_RECALL_STORAGE_KEY);
+      if (!raw) {
+        return;
+      }
+      sessionStorage.removeItem(POS_RECALL_STORAGE_KEY);
+      const heldOrder = JSON.parse(raw);
+      if (applyHeldOrderToPOS(heldOrder)) {
+        const invoiceNumber = String(heldOrder?.invoice_number || "").trim();
+        setMessage(
+          invoiceNumber
+            ? `Order ${invoiceNumber} loaded for settlement`
+            : `Order #${heldOrder?.id || ""} loaded for settlement`
+        );
+        setShowPaymentModal(true);
+        setTimeout(() => setMessage(""), 2800);
+      }
+    } catch {
+      // ignore invalid prefill payload
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const recallHeldOrder = async (heldId) => {
     setHeldActionBusyId(`recall-${heldId}`);
     try {
       const { data } = await api.post(`/orders/held/${heldId}/recall`);
       const heldOrder = data?.held_order;
-      const heldItems = Array.isArray(heldOrder?.items) ? heldOrder.items : [];
-      if (heldItems.length === 0) {
-        setMessage("Held order has no items");
-        setTimeout(() => setMessage(""), 2500);
+      const loaded = applyHeldOrderToPOS(heldOrder, { closeHeldModal: true });
+      if (!loaded) {
         return;
       }
-
-      clearSelectedCustomer();
-      setCart(
-        heldItems.map((item) => ({
-          id: item.product_id,
-          name: item.name,
-          qty: parseFloat(item.qty) || 1,
-          price: parseFloat(item.price) || 0,
-          category: item.category || null,
-        }))
-      );
-      setOrderType(heldOrder.order_type || "DINE-IN");
-      setTableNumber(heldOrder.table_number || "");
-      setCustomerName(heldOrder.customer_name || "");
-      setCrmCustomerName(heldOrder.customer_name || "");
-      setCustomerPhone(heldOrder.customer_phone || "");
-      setOrderId(heldOrder.id || null);
-      setShowHeldOrdersModal(false);
-      setMessage(`Held order #${heldId} recalled`);
+      const invoiceNumber = String(heldOrder?.invoice_number || "").trim();
+      setMessage(invoiceNumber ? `Order ${invoiceNumber} recalled` : `Held order #${heldId} recalled`);
       setTimeout(() => setMessage(""), 2600);
     } catch (err) {
       setMessage(err.response?.data?.message || "Failed to recall held order");
@@ -741,7 +802,9 @@ export default function POS() {
         loyalty_discount_amount: totals.loyaltyDiscount || 0,
         manual_discount_amount: totals.manualDiscount || 0,
         order_type: orderType,
-        channel: "POS",
+        channel: checkoutChannel || "POS",
+        source_held_order_id: settlementContext.heldOrderId || null,
+        source_reference: settlementContext.reference || null,
         items: cart.map((item) => ({
           product_id: item.id,
           qty: item.qty,
@@ -762,7 +825,12 @@ export default function POS() {
         time: formatBusinessTime(new Date(), { hour: "2-digit", minute: "2-digit" }),
         orderType: orderType,
         tableNumber: orderType === "DINE-IN" ? (tableNumber || null) : null,
-        customerName: resolvedCustomerName || (orderType === "DELIVERY" ? (customerName || tableNumber || null) : null),
+        customerName:
+          resolvedCustomerName ||
+          String(customerName || "").trim() ||
+          (orderType === "DELIVERY" ? tableNumber || null : null),
+        customerPhone: normalizedPhone || selectedCustomer?.phone || null,
+        note: settlementContext.note || null,
         cashier: user?.username || "System",
         items: cart.map((item) => ({
           name: item.name,
@@ -798,20 +866,18 @@ export default function POS() {
           }
         }, 250);
       }
-      
-      setTimeout(() => {
-        setCart([]);
-        setTableNumber("");
-        setCustomerName("");
-        setCustomerPhone("");
-        setCrmCustomerName("");
-        clearSelectedCustomer();
-        setCashGiven("");
-        setShowPaymentModal(false);
-        setMessage("");
-        setShowReceipt(false);
-        setReceiptData(null);
-      }, 5000);
+
+      setCart([]);
+      setTableNumber("");
+      setCustomerName("");
+      setCustomerPhone("");
+      setCrmCustomerName("");
+      setCheckoutChannel("POS");
+      setSettlementContext(DEFAULT_SETTLEMENT_CONTEXT);
+      clearSelectedCustomer();
+      setCashGiven("");
+      setShowPaymentModal(false);
+      setTimeout(() => setMessage(""), 3200);
     } catch (err) {
       setMessage("Payment failed. Please try again.");
       setTimeout(() => setMessage(""), 3000);
@@ -1257,6 +1323,29 @@ export default function POS() {
                     {formatCurrency(totals.total)}
                   </div>
                 </div>
+
+                {(settlementContext.invoiceNumber || settlementContext.heldOrderId) && (
+                  <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-blue-700">
+                      Settling QR Order
+                    </div>
+                    <div className="mt-1 text-sm font-semibold text-blue-900">
+                      {settlementContext.invoiceNumber
+                        ? settlementContext.invoiceNumber
+                        : `Held #${settlementContext.heldOrderId}`}
+                    </div>
+                    {tableNumber && (
+                      <div className="mt-1 text-xs font-semibold text-blue-800">
+                        Table: {tableNumber}
+                      </div>
+                    )}
+                    {settlementContext.note && (
+                      <div className="mt-1 text-xs font-semibold text-blue-800">
+                        Note: {settlementContext.note}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="mb-4 border border-gray-200 rounded-lg p-3 bg-gray-50">
                   <div className="text-sm font-semibold text-gray-800 mb-2">Customer (CRM)</div>
