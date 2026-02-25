@@ -40,6 +40,8 @@ const DEFAULT_ORDER_FORM = {
   payment_method: "CASH",
   note: "",
 };
+const MENU_LOAD_TIMEOUT_MS = 45000;
+const MENU_LOAD_RETRY_DELAYS_MS = [900, 1800];
 
 function toMoney(amount) {
   return `Rs. ${Number(amount || 0).toLocaleString("en-US", {
@@ -91,6 +93,47 @@ function isEmailValid(value) {
   const email = String(value || "").trim();
   if (!email) return true;
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function shouldRetryMenuLoad(err) {
+  const status = Number(err?.response?.status || 0);
+  if (status >= 500 || status === 429 || status === 0) {
+    return true;
+  }
+  const code = String(err?.code || "").toUpperCase();
+  if (
+    code === "ECONNABORTED" ||
+    code === "ERR_NETWORK" ||
+    code === "ETIMEDOUT" ||
+    code === "ECONNRESET"
+  ) {
+    return true;
+  }
+  return /timeout/i.test(String(err?.message || ""));
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function loadPublicMenuWithRetry(params) {
+  let lastError = null;
+  for (let attempt = 0; attempt <= MENU_LOAD_RETRY_DELAYS_MS.length; attempt += 1) {
+    try {
+      return await publicApi.get("/public/menu", {
+        params,
+        timeout: MENU_LOAD_TIMEOUT_MS,
+      });
+    } catch (err) {
+      lastError = err;
+      const isLastAttempt = attempt >= MENU_LOAD_RETRY_DELAYS_MS.length;
+      if (isLastAttempt || !shouldRetryMenuLoad(err)) {
+        throw err;
+      }
+      await wait(MENU_LOAD_RETRY_DELAYS_MS[attempt]);
+    }
+  }
+  throw lastError;
 }
 
 function validatePublicOrderForm(formValues) {
@@ -457,7 +500,7 @@ export default function PublicMenu() {
         if (Number.isFinite(branchId) && branchId > 0) {
           params.branch_id = branchId;
         }
-        const { data } = await publicApi.get("/public/menu", { params });
+        const { data } = await loadPublicMenuWithRetry(params);
         if (!mounted) return;
         setMenuData({
           branch: data?.branch || null,
@@ -468,7 +511,12 @@ export default function PublicMenu() {
       } catch (err) {
         console.error("Failed to load public menu:", err);
         if (mounted) {
-          setMessage(err?.response?.data?.message || "Failed to load menu");
+          const fallbackMessage =
+            /timeout/i.test(String(err?.message || "")) ||
+            String(err?.code || "").toUpperCase() === "ECONNABORTED"
+              ? "Server is taking too long to respond. Please retry in a few seconds."
+              : "Failed to load menu";
+          setMessage(err?.response?.data?.message || fallbackMessage);
         }
       } finally {
         if (mounted) setLoading(false);
