@@ -42,6 +42,7 @@ const DEFAULT_ORDER_FORM = {
 };
 const MENU_LOAD_TIMEOUT_MS = 45000;
 const MENU_LOAD_RETRY_DELAYS_MS = [900, 1800];
+const MENU_LOAD_HARD_TIMEOUT_MS = 60000;
 
 function toMoney(amount) {
   return `Rs. ${Number(amount || 0).toLocaleString("en-US", {
@@ -96,6 +97,9 @@ function isEmailValid(value) {
 }
 
 function shouldRetryMenuLoad(err) {
+  if (String(err?.code || "").toUpperCase() === "ERR_CANCELED") {
+    return false;
+  }
   const status = Number(err?.response?.status || 0);
   if (status >= 500 || status === 429 || status === 0) {
     return true;
@@ -116,16 +120,20 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function loadPublicMenuWithRetry(params) {
+async function loadPublicMenuWithRetry(params, signal = null) {
   let lastError = null;
   for (let attempt = 0; attempt <= MENU_LOAD_RETRY_DELAYS_MS.length; attempt += 1) {
     try {
       return await publicApi.get("/public/menu", {
         params,
         timeout: MENU_LOAD_TIMEOUT_MS,
+        signal,
       });
     } catch (err) {
       lastError = err;
+      if (String(err?.code || "").toUpperCase() === "ERR_CANCELED") {
+        throw err;
+      }
       const isLastAttempt = attempt >= MENU_LOAD_RETRY_DELAYS_MS.length;
       if (isLastAttempt || !shouldRetryMenuLoad(err)) {
         throw err;
@@ -467,8 +475,10 @@ export default function PublicMenu() {
   const location = useLocation();
 
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
+  const [reloadTick, setReloadTick] = useState(0);
   const [menuData, setMenuData] = useState({
     branch: null,
     categories: [],
@@ -484,11 +494,15 @@ export default function PublicMenu() {
   const resizeDebounceRef = useRef(null);
 
   const detectedTable = useMemo(() => getDetectedTable(location.search), [location.search]);
+  const retryMenuLoad = () => setReloadTick((prev) => prev + 1);
 
   useEffect(() => {
     let mounted = true;
+    const controller = new AbortController();
+    const hardTimeout = setTimeout(() => controller.abort(), MENU_LOAD_HARD_TIMEOUT_MS);
     const load = async () => {
       setLoading(true);
+      setLoadFailed(false);
       setMessage("");
       const params = {};
       try {
@@ -500,7 +514,7 @@ export default function PublicMenu() {
         if (Number.isFinite(branchId) && branchId > 0) {
           params.branch_id = branchId;
         }
-        const { data } = await loadPublicMenuWithRetry(params);
+        const { data } = await loadPublicMenuWithRetry(params, controller.signal);
         if (!mounted) return;
         setMenuData({
           branch: data?.branch || null,
@@ -509,6 +523,9 @@ export default function PublicMenu() {
           generated_at: data?.generated_at || null,
         });
       } catch (err) {
+        if (!mounted || String(err?.code || "").toUpperCase() === "ERR_CANCELED") {
+          return;
+        }
         console.error("Failed to load public menu:", err);
         if (mounted) {
           const fallbackMessage =
@@ -516,17 +533,21 @@ export default function PublicMenu() {
             String(err?.code || "").toUpperCase() === "ECONNABORTED"
               ? "Server is taking too long to respond. Please retry in a few seconds."
               : "Failed to load menu";
+          setLoadFailed(true);
           setMessage(err?.response?.data?.message || fallbackMessage);
         }
       } finally {
+        clearTimeout(hardTimeout);
         if (mounted) setLoading(false);
       }
     };
     load();
     return () => {
       mounted = false;
+      clearTimeout(hardTimeout);
+      controller.abort();
     };
-  }, [location.search, routeBranchCode]);
+  }, [location.search, reloadTick, routeBranchCode]);
 
   useEffect(() => {
     const updateViewport = () => {
@@ -761,6 +782,14 @@ export default function PublicMenu() {
           </span>
           <span className="cv-public-meta-chip">{Array.isArray(menuData.items) ? menuData.items.length : 0} items</span>
         </div>
+        {loadFailed && (
+          <div className="cv-public-load-alert" role="status">
+            <span>{message || "Failed to load menu"}</span>
+            <button type="button" className="cv-public-load-alert-btn" onClick={retryMenuLoad}>
+              Retry
+            </button>
+          </div>
+        )}
 
         <div className="cv-public-book-root">
           <div className="cv-public-book-frame">
@@ -816,7 +845,11 @@ export default function PublicMenu() {
                           {meta.icon} {meta.label}
                         </h2>
                         <p className="cv-public-menu-subtitle">
-                          {loading ? "Loading..." : `${totalCategoryItems} items`}
+                          {loading
+                            ? "Loading..."
+                            : loadFailed
+                              ? "Unavailable"
+                              : `${totalCategoryItems} items`}
                         </p>
                       </header>
                       <div className="cv-public-flip-scroll">
@@ -856,6 +889,18 @@ export default function PublicMenu() {
                                 </div>
                               </article>
                             ))}
+                          </div>
+                        ) : loadFailed ? (
+                          <div className="cv-public-flip-note mt-3">
+                            <h3>Unable to load menu right now</h3>
+                            <p>{message || "Please check the connection and retry."}</p>
+                            <button
+                              type="button"
+                              className="cv-public-submit-btn cv-public-note-action"
+                              onClick={retryMenuLoad}
+                            >
+                              Retry Menu
+                            </button>
                           </div>
                         ) : categoryItems.length === 0 ? (
                           <div className="cv-public-flip-note mt-3">
@@ -1042,7 +1087,7 @@ export default function PublicMenu() {
           </div>
         )}
 
-        {message && (
+        {message && !loadFailed && (
           <div
             className={`fixed right-4 z-50 rounded-lg bg-rose-600 px-4 py-2 text-sm text-white shadow-lg ${
               isCategoryStep && cartCount > 0 ? "bottom-24" : "bottom-4"
