@@ -1,7 +1,9 @@
 import axios from "axios";
+import { resolveApiBaseUrl } from "./apiBase.js";
 
 const publicApi = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "/api",
+  baseURL: resolveApiBaseUrl(),
+  timeout: 20000,
 });
 
 export default publicApi;

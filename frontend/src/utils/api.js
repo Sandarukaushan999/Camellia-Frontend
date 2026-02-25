@@ -1,8 +1,10 @@
 import axios from "axios";
+import { resolveApiBaseUrl } from "./apiBase.js";
 
 const api = axios.create({
-  // In production, use VITE_API_URL if set; in dev, use Vite proxy (/api)
-  baseURL: import.meta.env.VITE_API_URL || "/api",
+  // In production, normalize VITE_API_URL so '/api' is always present.
+  baseURL: resolveApiBaseUrl(),
+  timeout: 20000,
 });
 
 // Request interceptor: Always add token from localStorage if available
@@ -42,4 +44,3 @@ api.interceptors.response.use(
 );
 
 export default api;
-
