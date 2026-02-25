@@ -1943,6 +1943,35 @@ body {
   padding: 0.55rem 0.65rem;
 }
 
+.cv-public-order-stack {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.95rem;
+  min-width: 0;
+}
+
+.cv-public-order-summary-card,
+.cv-public-order-form-shell {
+  min-width: 0;
+}
+
+.cv-public-order-form-shell {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.92));
+}
+
+.cv-public-order-form-shell .cv-public-input,
+.cv-public-order-form-shell select.cv-public-input,
+.cv-public-order-form-shell textarea.cv-public-input {
+  font-size: 0.9rem;
+}
+
+@media (min-width: 1040px) {
+  .cv-public-order-stack {
+    grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+    align-items: start;
+  }
+}
+
 .cv-public-flip-page--cart .cv-public-cart-lines,
 .cv-public-flip-page--payment .cv-public-flip-scroll {
   overscroll-behavior: contain;
@@ -2075,6 +2104,33 @@ body {
     grid-template-columns: 1fr;
   }
 
+  .cv-public-order-stack {
+    grid-template-columns: 1fr;
+  }
+
+  .cv-public-order-form-shell {
+    padding: 0.8rem;
+  }
+
+  .cv-public-cart-line {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.35rem;
+  }
+
+  .cv-public-cart-line .text-right {
+    text-align: left;
+  }
+
+  .cv-public-cart-lines {
+    max-height: 190px;
+  }
+
+  .cv-public-input {
+    font-size: 16px;
+    padding: 0.62rem 0.72rem;
+  }
+
   .cv-public-flip-footer--split {
     grid-template-columns: 1fr;
   }
@@ -2095,6 +2151,36 @@ body {
 
   .cv-public-cover-price-tag strong {
     font-size: 1.1rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .cv-public-flip-content {
+    padding: 0.56rem;
+  }
+
+  .cv-public-flip-title {
+    font-size: 1rem;
+  }
+
+  .cv-public-menu-subtitle {
+    font-size: 0.8rem;
+  }
+
+  .cv-public-order-form-shell {
+    padding: 0.68rem;
+    border-radius: 0.9rem;
+  }
+
+  .cv-public-book-controls {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .cv-public-book-nav-btn {
+    flex: 1 1 calc(33% - 0.4rem);
+    min-width: 70px;
+    padding: 0.36rem 0.55rem;
   }
 }
 

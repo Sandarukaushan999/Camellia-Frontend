@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import HTMLFlipBook from "react-pageflip";
 import { useLocation, useParams } from "react-router-dom";
 import publicApi from "../utils/publicApi.js";
-import { formatBusinessDateTime } from "../utils/timezone.js";
 
 const PAYMENT_METHOD_OPTIONS = ["CASH", "CARD", "QR", "ONLINE"];
 const CUSTOMER_PROFILE_STORAGE_KEY = "cv_public_customer_profiles_v1";
@@ -25,7 +24,6 @@ const STEP_KEYS = [
   "cover",
   ...QR_CATEGORY_PAGE_KEYS.map((key) => `category:${key}`),
   "cart",
-  "payment",
   "thanks",
 ];
 const STEP_INDEX = Object.fromEntries(STEP_KEYS.map((stepKey, index) => [stepKey, index]));
@@ -95,38 +93,30 @@ function trimCustomerProfiles(profileMap = {}) {
   return Object.fromEntries(sorted.slice(0, MAX_STORED_CUSTOMERS));
 }
 
-export default function PublicMenu() {
-  const { branchCode: routeBranchCode = "" } = useParams();
-  const location = useLocation();
-
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState("");
-  const [menuData, setMenuData] = useState({
-    branch: null,
-    categories: [],
-    items: [],
-    generated_at: null,
-  });
-  const [cart, setCart] = useState({});
-  const [orderForm, setOrderForm] = useState(DEFAULT_ORDER_FORM);
-  const [orderSuccess, setOrderSuccess] = useState(null);
-  const [activeStep, setActiveStep] = useState("cover");
+const PublicOrderPaymentForm = React.memo(function PublicOrderPaymentForm({
+  detectedTable,
+  cartTotal,
+  cartLineCount,
+  submitting,
+  resetToken,
+  onSubmit,
+}) {
+  const [orderForm, setOrderForm] = useState(() => ({
+    ...DEFAULT_ORDER_FORM,
+    table_number: detectedTable || "",
+  }));
   const [customerProfiles, setCustomerProfiles] = useState(() => readStoredCustomerProfiles());
   const [crmLookupState, setCrmLookupState] = useState("idle");
   const [crmLookupMessage, setCrmLookupMessage] = useState("");
-  const flipBookRef = useRef(null);
-
-  const detectedTable = useMemo(() => getDetectedTable(location.search), [location.search]);
 
   useEffect(() => {
-    const tableValue = String(detectedTable || "").trim();
-    if (!tableValue) return;
-    setOrderForm((prev) => ({
-      ...prev,
-      table_number: prev.table_number || tableValue,
-    }));
-  }, [detectedTable]);
+    setOrderForm({
+      ...DEFAULT_ORDER_FORM,
+      table_number: detectedTable || "",
+    });
+    setCrmLookupState("idle");
+    setCrmLookupMessage("");
+  }, [detectedTable, resetToken]);
 
   useEffect(() => {
     try {
@@ -180,6 +170,188 @@ export default function PublicMenu() {
       clearTimeout(timeout);
     };
   }, [orderForm.customer_phone]);
+
+  const matchedProfile = useMemo(() => {
+    const key = normalizePhone(orderForm.customer_phone);
+    return key ? customerProfiles[key] || null : null;
+  }, [customerProfiles, orderForm.customer_phone]);
+
+  const canPlaceOrder =
+    String(orderForm.customer_name || "").trim().length >= 2 && cartLineCount > 0;
+
+  const stopFlipGesture = (event) => {
+    event.stopPropagation();
+  };
+
+  const handlePhoneChange = (value) => {
+    const normalized = normalizePhone(value);
+    setOrderForm((prev) => ({ ...prev, customer_phone: normalized }));
+    const profile = normalized ? customerProfiles[normalized] : null;
+    if (!profile) return;
+    setOrderForm((prev) => ({
+      ...prev,
+      customer_phone: normalized,
+      customer_name: prev.customer_name || profile.customer_name || "",
+      customer_email: prev.customer_email || profile.customer_email || "",
+      customer_address: prev.customer_address || profile.customer_address || "",
+      table_number: prev.table_number || profile.table_number || detectedTable || "",
+      payment_method:
+        prev.payment_method === "CASH" && profile.payment_method
+          ? profile.payment_method
+          : prev.payment_method,
+      note: prev.note || profile.note || "",
+    }));
+  };
+
+  return (
+    <form
+      className="space-y-3"
+      onPointerDownCapture={stopFlipGesture}
+      onMouseDownCapture={stopFlipGesture}
+      onTouchStartCapture={stopFlipGesture}
+      onClickCapture={stopFlipGesture}
+      onSubmit={async (event) => {
+        event.preventDefault();
+        if (!canPlaceOrder || submitting) return;
+        const ok = await onSubmit(orderForm);
+        if (!ok) return;
+        const phoneKey = normalizePhone(orderForm.customer_phone);
+        if (!phoneKey) return;
+        setCustomerProfiles((prev) => ({
+          ...prev,
+          [phoneKey]: {
+            customer_name: orderForm.customer_name || "",
+            customer_email: orderForm.customer_email || "",
+            customer_address: orderForm.customer_address || "",
+            table_number: orderForm.table_number || "",
+            payment_method: orderForm.payment_method || "CASH",
+            note: orderForm.note || "",
+            updated_at: new Date().toISOString(),
+          },
+        }));
+      }}
+    >
+      <label className="block">
+        <span className="mb-1 block text-xs font-bold uppercase text-slate-600">Your name *</span>
+        <input
+          type="text"
+          className="cv-public-input"
+          value={orderForm.customer_name}
+          onChange={(event) =>
+            setOrderForm((prev) => ({ ...prev, customer_name: event.target.value }))
+          }
+          placeholder="Customer name"
+          required
+        />
+      </label>
+      <label className="block">
+        <span className="mb-1 block text-xs font-bold uppercase text-slate-600">Phone number</span>
+        <input
+          type="tel"
+          className="cv-public-input"
+          value={orderForm.customer_phone}
+          onChange={(event) => handlePhoneChange(event.target.value)}
+          placeholder="07xxxxxxxx"
+        />
+      </label>
+      {crmLookupMessage && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700">
+          {crmLookupMessage}
+        </div>
+      )}
+      {matchedProfile && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800">
+          Returning customer detected.
+        </div>
+      )}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <input
+          type="email"
+          className="cv-public-input"
+          value={orderForm.customer_email}
+          onChange={(event) =>
+            setOrderForm((prev) => ({ ...prev, customer_email: event.target.value }))
+          }
+          placeholder="name@example.com"
+        />
+        <input
+          type="text"
+          className="cv-public-input"
+          value={orderForm.customer_address}
+          onChange={(event) =>
+            setOrderForm((prev) => ({ ...prev, customer_address: event.target.value }))
+          }
+          placeholder="Optional address"
+        />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="cv-public-order-type-fixed">DINE-IN</div>
+        <select
+          className="cv-public-input"
+          value={orderForm.payment_method}
+          onChange={(event) =>
+            setOrderForm((prev) => ({ ...prev, payment_method: event.target.value }))
+          }
+        >
+          {PAYMENT_METHOD_OPTIONS.map((method) => (
+            <option key={method} value={method}>
+              {method}
+            </option>
+          ))}
+        </select>
+      </div>
+      <input
+        type="text"
+        className="cv-public-input"
+        value={orderForm.table_number}
+        onChange={(event) =>
+          setOrderForm((prev) => ({ ...prev, table_number: event.target.value }))
+        }
+        placeholder="Table no"
+      />
+      {detectedTable && (
+        <p className="text-xs font-semibold text-slate-500">Auto-detected from QR code</p>
+      )}
+      <textarea
+        className="cv-public-input min-h-[84px] resize-y"
+        value={orderForm.note}
+        onChange={(event) => setOrderForm((prev) => ({ ...prev, note: event.target.value }))}
+        placeholder="Special notes"
+      />
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <div className="text-xs font-semibold uppercase text-slate-500">Estimated Total</div>
+        <div className="mt-1 text-xl font-black text-slate-900">{toMoney(cartTotal)}</div>
+      </div>
+      <button type="submit" className="cv-public-submit-btn" disabled={!canPlaceOrder || submitting}>
+        {submitting ? "Placing..." : "Place Order"}
+      </button>
+      {crmLookupState === "loading" && (
+        <p className="text-xs font-semibold text-slate-500">Checking CRM customer profile...</p>
+      )}
+    </form>
+  );
+});
+
+export default function PublicMenu() {
+  const { branchCode: routeBranchCode = "" } = useParams();
+  const location = useLocation();
+
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState("");
+  const [menuData, setMenuData] = useState({
+    branch: null,
+    categories: [],
+    items: [],
+    generated_at: null,
+  });
+  const [cart, setCart] = useState({});
+  const [orderSuccess, setOrderSuccess] = useState(null);
+  const [paymentFormResetToken, setPaymentFormResetToken] = useState(0);
+  const [activeStep, setActiveStep] = useState("cover");
+  const flipBookRef = useRef(null);
+
+  const detectedTable = useMemo(() => getDetectedTable(location.search), [location.search]);
 
   useEffect(() => {
     let mounted = true;
@@ -255,19 +427,10 @@ export default function PublicMenu() {
     () => cartLines.reduce((sum, line) => sum + Number(line.qty || 0), 0),
     [cartLines]
   );
-  const canPlaceOrder =
-    String(orderForm.customer_name || "").trim().length >= 2 && cartLines.length > 0;
-  const matchedProfile = useMemo(() => {
-    const key = normalizePhone(orderForm.customer_phone);
-    return key ? customerProfiles[key] || null : null;
-  }, [customerProfiles, orderForm.customer_phone]);
 
-  const maxStepIndex = orderSuccess ? STEP_INDEX.thanks : STEP_INDEX.payment;
+  const maxStepIndex = orderSuccess ? STEP_INDEX.thanks : STEP_INDEX.cart;
   const activeStepIndex = STEP_INDEX[activeStep] ?? 0;
   const isCategoryStep = activeStep.startsWith("category:");
-  const stopFlipGesture = (event) => {
-    event.stopPropagation();
-  };
 
   const getFlipApi = () => {
     try {
@@ -347,51 +510,34 @@ export default function PublicMenu() {
     });
   };
 
-  const handlePhoneChange = (value) => {
-    setOrderForm((prev) => ({ ...prev, customer_phone: value }));
-    const key = normalizePhone(value);
-    const profile = key ? customerProfiles[key] : null;
-    if (!profile) return;
-    setOrderForm((prev) => ({
-      ...prev,
-      customer_phone: value,
-      customer_name: prev.customer_name || profile.customer_name || "",
-      customer_email: prev.customer_email || profile.customer_email || "",
-      customer_address: prev.customer_address || profile.customer_address || "",
-      table_number: prev.table_number || profile.table_number || detectedTable || "",
-      payment_method:
-        prev.payment_method === "CASH" && profile.payment_method
-          ? profile.payment_method
-          : prev.payment_method,
-      note: prev.note || profile.note || "",
-    }));
-  };
-
-  const submitOrder = async () => {
-    if (!canPlaceOrder) return;
+  const submitOrder = async (formValues) => {
+    if (!formValues || String(formValues.customer_name || "").trim().length < 2) return false;
+    if (!Array.isArray(cartLines) || cartLines.length === 0) return false;
     setSubmitting(true);
     setMessage("");
     try {
       const payload = {
         branch_id: menuData?.branch?.id || undefined,
         branch_code: menuData?.branch?.code || undefined,
-        customer_name: orderForm.customer_name,
-        customer_phone: orderForm.customer_phone || undefined,
-        customer_email: orderForm.customer_email || undefined,
-        customer_address: orderForm.customer_address || undefined,
+        customer_name: formValues.customer_name,
+        customer_phone: formValues.customer_phone || undefined,
+        customer_email: formValues.customer_email || undefined,
+        customer_address: formValues.customer_address || undefined,
         order_type: "DINE-IN",
-        table_number: orderForm.table_number || undefined,
-        payment_method: orderForm.payment_method,
-        note: orderForm.note || undefined,
+        table_number: formValues.table_number || undefined,
+        payment_method: formValues.payment_method || "CASH",
+        note: formValues.note || undefined,
         items: cartLines.map((line) => ({ product_id: line.productId, qty: line.qty })),
       };
       const { data } = await publicApi.post("/public/orders", payload);
       setOrderSuccess(data || null);
       setCart({});
       setActiveStep("thanks");
+      return true;
     } catch (err) {
       console.error("Failed to submit menu order:", err);
       setMessage(err?.response?.data?.message || "Failed to submit order");
+      return false;
     } finally {
       setSubmitting(false);
     }
@@ -401,6 +547,7 @@ export default function PublicMenu() {
     setOrderSuccess(null);
     setMessage("");
     setCart({});
+    setPaymentFormResetToken((prev) => prev + 1);
     setActiveStep(FIRST_CATEGORY_STEP);
   };
 
@@ -551,159 +698,58 @@ export default function PublicMenu() {
                   <p className="cv-public-menu-subtitle">{cartCount} items</p>
                 </header>
                 <div className="cv-public-flip-scroll">
-                  {cartLines.length === 0 ? (
-                    <div className="cv-public-flip-note">
-                      <h3>Your cart is empty</h3>
-                      <p>Add items from Categories.</p>
-                    </div>
-                  ) : (
-                    <div className="cv-public-cart-panel cv-public-cart-panel--flat">
-                      <div className="cv-public-cart-lines">
-                        {cartLines.map((line) => (
-                          <div key={`cart-${line.productId}`} className="cv-public-cart-line">
-                            <div className="min-w-0">
-                              <div className="truncate text-sm font-bold text-slate-900">
-                                {line.item?.name}
+                  <div className="space-y-4 cv-public-order-stack">
+                    {cartLines.length === 0 ? (
+                      <div className="cv-public-flip-note">
+                        <h3>Your cart is empty</h3>
+                        <p>Add items from Categories.</p>
+                      </div>
+                    ) : (
+                      <div className="cv-public-cart-panel cv-public-cart-panel--flat cv-public-order-summary-card">
+                        <div className="cv-public-cart-lines">
+                          {cartLines.map((line) => (
+                            <div key={`cart-${line.productId}`} className="cv-public-cart-line">
+                              <div className="min-w-0">
+                                <div className="truncate text-sm font-bold text-slate-900">
+                                  {line.item?.name}
+                                </div>
+                                <div className="text-xs text-slate-500">{toMoney(line.item?.price)} each</div>
                               </div>
-                              <div className="text-xs text-slate-500">{toMoney(line.item?.price)} each</div>
+                              <div className="text-right text-sm font-extrabold text-slate-900">
+                                x{line.qty} | {toMoney(line.lineTotal)}
+                              </div>
                             </div>
-                            <div className="text-right text-sm font-extrabold text-slate-900">
-                              x{line.qty} | {toMoney(line.lineTotal)}
-                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                          <div className="text-xs font-semibold uppercase text-slate-500">
+                            Estimated Total
                           </div>
-                        ))}
-                      </div>
-                      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                        <div className="text-xs font-semibold uppercase text-slate-500">
-                          Estimated Total
-                        </div>
-                        <div className="mt-1 text-lg font-extrabold text-slate-900">
-                          {toMoney(cartTotal)}
+                          <div className="mt-1 text-lg font-extrabold text-slate-900">
+                            {toMoney(cartTotal)}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+                    )}
 
-            <div className="cv-public-flip-page cv-public-flip-page--payment">
-              <div className="cv-public-flip-content">
-                <header className="cv-public-flip-header">
-                  <p className="cv-public-menu-kicker">Payment</p>
-                  <h2 className="cv-public-flip-title">Place Your Order</h2>
-                  <p className="cv-public-menu-subtitle">DINE-IN only</p>
-                </header>
-                <div className="cv-public-flip-scroll">
-                  <form
-                    className="space-y-3"
-                    onPointerDownCapture={stopFlipGesture}
-                    onTouchStartCapture={stopFlipGesture}
-                    onMouseDownCapture={stopFlipGesture}
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      submitOrder();
-                    }}
-                  >
-                    <label className="block">
-                      <span className="mb-1 block text-xs font-bold uppercase text-slate-600">
-                        Your name *
-                      </span>
-                      <input
-                        type="text"
-                        className="cv-public-input"
-                        value={orderForm.customer_name}
-                        onChange={(event) =>
-                          setOrderForm((prev) => ({ ...prev, customer_name: event.target.value }))
-                        }
-                        placeholder="Customer name"
-                        required
+                    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm cv-public-order-form-shell">
+                      <header className="mb-3">
+                        <p className="cv-public-menu-kicker">Place Your Order</p>
+                        <h3 className="text-base font-extrabold text-slate-900">Customer Details</h3>
+                        <p className="text-xs font-semibold text-slate-500">
+                          Fill details below and submit order from this section.
+                        </p>
+                      </header>
+                      <PublicOrderPaymentForm
+                        detectedTable={detectedTable}
+                        cartTotal={cartTotal}
+                        cartLineCount={cartLines.length}
+                        submitting={submitting}
+                        resetToken={paymentFormResetToken}
+                        onSubmit={submitOrder}
                       />
-                    </label>
-                    <label className="block">
-                      <span className="mb-1 block text-xs font-bold uppercase text-slate-600">
-                        Phone number
-                      </span>
-                      <input
-                        type="tel"
-                        className="cv-public-input"
-                        value={orderForm.customer_phone}
-                        onChange={(event) => handlePhoneChange(normalizePhone(event.target.value))}
-                        placeholder="07xxxxxxxx"
-                      />
-                    </label>
-                    {crmLookupMessage && (
-                      <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700">
-                        {crmLookupMessage}
-                      </div>
-                    )}
-                    {matchedProfile && (
-                      <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800">
-                        Returning customer detected.
-                      </div>
-                    )}
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <input
-                        type="email"
-                        className="cv-public-input"
-                        value={orderForm.customer_email}
-                        onChange={(event) =>
-                          setOrderForm((prev) => ({ ...prev, customer_email: event.target.value }))
-                        }
-                        placeholder="name@example.com"
-                      />
-                      <input
-                        type="text"
-                        className="cv-public-input"
-                        value={orderForm.customer_address}
-                        onChange={(event) =>
-                          setOrderForm((prev) => ({ ...prev, customer_address: event.target.value }))
-                        }
-                        placeholder="Optional address"
-                      />
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="cv-public-order-type-fixed">DINE-IN</div>
-                      <select
-                        className="cv-public-input"
-                        value={orderForm.payment_method}
-                        onChange={(event) =>
-                          setOrderForm((prev) => ({ ...prev, payment_method: event.target.value }))
-                        }
-                      >
-                        {PAYMENT_METHOD_OPTIONS.map((method) => (
-                          <option key={method} value={method}>
-                            {method}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <input
-                      type="text"
-                      className="cv-public-input"
-                      value={orderForm.table_number}
-                      onChange={(event) =>
-                        setOrderForm((prev) => ({ ...prev, table_number: event.target.value }))
-                      }
-                      placeholder="Table no"
-                    />
-                    {detectedTable && (
-                      <p className="text-xs font-semibold text-slate-500">Auto-detected from QR code</p>
-                    )}
-                    <textarea
-                      className="cv-public-input min-h-[84px] resize-y"
-                      value={orderForm.note}
-                      onChange={(event) => setOrderForm((prev) => ({ ...prev, note: event.target.value }))}
-                      placeholder="Special notes"
-                    />
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                      <div className="text-xs font-semibold uppercase text-slate-500">Estimated Total</div>
-                      <div className="mt-1 text-xl font-black text-slate-900">{toMoney(cartTotal)}</div>
-                    </div>
-                    <button type="submit" className="cv-public-submit-btn" disabled={!canPlaceOrder || submitting}>
-                      {submitting ? "Placing..." : "Place Order"}
-                    </button>
-                  </form>
+                    </section>
+                  </div>
                 </div>
               </div>
             </div>
@@ -730,7 +776,7 @@ export default function PublicMenu() {
                   ) : (
                     <div className="cv-public-flip-note">
                       <h3>No completed order</h3>
-                      <p>Place order from Payment page.</p>
+                      <p>Place your order from the Cart page.</p>
                     </div>
                   )}
                 </div>
@@ -763,12 +809,11 @@ export default function PublicMenu() {
           </button>
           <button
             type="button"
-            onClick={() => goToStep("payment")}
-            className={`cv-public-book-nav-btn ${
-              activeStep === "payment" || activeStep === "thanks" ? "is-active" : ""
-            }`}
+            onClick={() => goToStep("thanks")}
+            className={`cv-public-book-nav-btn ${activeStep === "thanks" ? "is-active" : ""}`}
+            disabled={!orderSuccess}
           >
-            Payment
+            Thank You
           </button>
           <button
             type="button"

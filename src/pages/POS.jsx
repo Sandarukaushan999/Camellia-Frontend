@@ -807,6 +807,7 @@ export default function POS() {
         source_reference: settlementContext.reference || null,
         items: cart.map((item) => ({
           product_id: item.id,
+          name: item.name,
           qty: item.qty,
           price: item.price,
         })),
