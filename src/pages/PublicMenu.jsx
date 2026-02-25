@@ -33,6 +33,18 @@ function toCategoryStep(categoryKeyValue) {
   return `category:${categoryKeyValue}`;
 }
 
+function getViewportSnapshot() {
+  if (typeof window === "undefined") {
+    return { width: 390, height: 780 };
+  }
+  return { width: window.innerWidth, height: window.innerHeight };
+}
+
+function isInteractiveTarget(target) {
+  if (!(target instanceof Element)) return false;
+  return Boolean(target.closest("input, textarea, select, button, a, label"));
+}
+
 const DEFAULT_ORDER_FORM = {
   customer_name: "",
   customer_phone: "",
@@ -349,7 +361,15 @@ export default function PublicMenu() {
   const [orderSuccess, setOrderSuccess] = useState(null);
   const [paymentFormResetToken, setPaymentFormResetToken] = useState(0);
   const [activeStep, setActiveStep] = useState("cover");
+  const [viewport, setViewport] = useState(getViewportSnapshot);
   const flipBookRef = useRef(null);
+  const touchGestureRef = useRef({
+    active: false,
+    startX: 0,
+    startY: 0,
+    startTime: 0,
+    ignore: false,
+  });
 
   const detectedTable = useMemo(() => getDetectedTable(location.search), [location.search]);
 
@@ -391,6 +411,15 @@ export default function PublicMenu() {
     };
   }, [location.search, routeBranchCode]);
 
+  useEffect(() => {
+    const updateViewport = () => {
+      setViewport(getViewportSnapshot());
+    };
+    updateViewport();
+    window.addEventListener("resize", updateViewport, { passive: true });
+    return () => window.removeEventListener("resize", updateViewport);
+  }, []);
+
   const categoryItemsByKey = useMemo(() => {
     const groups = Object.fromEntries(QR_CATEGORY_PAGE_KEYS.map((key) => [key, []]));
     const allItems = Array.isArray(menuData.items) ? menuData.items : [];
@@ -430,7 +459,19 @@ export default function PublicMenu() {
 
   const maxStepIndex = orderSuccess ? STEP_INDEX.thanks : STEP_INDEX.cart;
   const activeStepIndex = STEP_INDEX[activeStep] ?? 0;
-  const isCategoryStep = activeStep.startsWith("category:");
+  const isMobileViewport = viewport.width <= 920;
+  const flipBookWidth = useMemo(() => {
+    if (isMobileViewport) {
+      return Math.max(300, Math.min(430, viewport.width - 24));
+    }
+    return Math.max(460, Math.min(620, Math.round(viewport.width * 0.48)));
+  }, [isMobileViewport, viewport.width]);
+  const flipBookHeight = useMemo(() => {
+    if (isMobileViewport) {
+      return Math.max(560, Math.min(860, viewport.height - 158));
+    }
+    return Math.max(660, Math.min(900, Math.round(viewport.height * 0.82)));
+  }, [isMobileViewport, viewport.height]);
 
   const getFlipApi = () => {
     try {
@@ -470,6 +511,38 @@ export default function PublicMenu() {
       return;
     }
     setActiveStep(STEP_KEYS[activeStepIndex + 1]);
+  };
+
+  const handleBookTouchStart = (event) => {
+    const touch = event.touches?.[0];
+    if (!touch) return;
+    touchGestureRef.current = {
+      active: true,
+      startX: touch.clientX,
+      startY: touch.clientY,
+      startTime: Date.now(),
+      ignore: isInteractiveTarget(event.target),
+    };
+  };
+
+  const handleBookTouchEnd = (event) => {
+    const state = touchGestureRef.current;
+    touchGestureRef.current.active = false;
+    if (!state.active || state.ignore) return;
+    const touch = event.changedTouches?.[0];
+    if (!touch) return;
+    const deltaX = touch.clientX - state.startX;
+    const deltaY = touch.clientY - state.startY;
+    const absX = Math.abs(deltaX);
+    const absY = Math.abs(deltaY);
+    const elapsedMs = Date.now() - state.startTime;
+    if (elapsedMs > 900) return;
+    if (absX < 34 || absX < absY * 1.2) return;
+    if (deltaX > 0) {
+      goPrev();
+    } else {
+      goNext();
+    }
   };
 
   const handlePageFlip = (event) => {
@@ -554,279 +627,262 @@ export default function PublicMenu() {
   return (
     <div className="cv-public-menu min-h-screen">
       <div className="cv-public-menu-bg" />
-      <div className="relative mx-auto max-w-7xl p-3 md:p-5">
+      <div className="cv-public-book-stage relative mx-auto max-w-7xl p-3 md:p-5">
         <div className="cv-public-book-root">
-          <HTMLFlipBook
-            ref={flipBookRef}
-            className="cv-public-flipbook"
-            width={440}
-            height={700}
-            size="stretch"
-            minWidth={300}
-            maxWidth={1200}
-            minHeight={520}
-            maxHeight={860}
-            maxShadowOpacity={0.22}
-            drawShadow
-            usePortrait
-            showCover
-            mobileScrollSupport
-            disableFlipByClick
-            useMouseEvents
-            swipeDistance={68}
-            onFlip={handlePageFlip}
+          <div
+            className="cv-public-book-frame"
+            onTouchStart={handleBookTouchStart}
+            onTouchEnd={handleBookTouchEnd}
           >
-            <div className="cv-public-flip-page cv-public-flip-page--cover">
-              <article className="cv-public-cover-poster min-h-[70vh]">
-                <div className="cv-public-cover-accent" />
-                <div className="cv-public-cover-headline">
-                  <p className="cv-public-cover-kicker">Camellia Cafe</p>
-                  <h1>Signature Menu</h1>
-                  <p>Browse categories, add items, review cart, then place your order.</p>
-                </div>
-                <div className="cv-public-cover-price-tag">
-                  <span>Live</span>
-                  <strong>MENU</strong>
-                </div>
-              </article>
-            </div>
+            <div className="cv-public-book-spine" />
+            <div className="cv-public-book-peek" aria-hidden="true" />
+            <HTMLFlipBook
+              ref={flipBookRef}
+              className="cv-public-flipbook"
+              width={flipBookWidth}
+              height={flipBookHeight}
+              size="fixed"
+              maxShadowOpacity={0.48}
+              drawShadow
+              usePortrait={isMobileViewport}
+              showCover
+              showPageCorners
+              mobileScrollSupport
+              disableFlipByClick={!isMobileViewport}
+              useMouseEvents
+              swipeDistance={isMobileViewport ? 34 : 62}
+              flippingTime={isMobileViewport ? 760 : 920}
+              onFlip={handlePageFlip}
+            >
+              <div className="cv-public-flip-page cv-public-flip-page--cover">
+                <article className="cv-public-cover-poster min-h-[70vh]">
+                  <div className="cv-public-cover-accent" />
+                  <div className="cv-public-cover-headline">
+                    <p className="cv-public-cover-kicker">Camellia Cafe</p>
+                    <h1>Signature Menu</h1>
+                    <p>Browse categories, add items, review cart, then place your order.</p>
+                  </div>
+                  <div className="cv-public-cover-price-tag">
+                    <span>Live</span>
+                    <strong>MENU</strong>
+                  </div>
+                  <div className="cv-public-page-number cv-public-page-number--cover">
+                    {STEP_INDEX.cover + 1}
+                  </div>
+                </article>
+              </div>
 
-            {QR_CATEGORY_PAGE_KEYS.map((categoryPageKey) => {
-              const stepKey = toCategoryStep(categoryPageKey);
-              const meta = CATEGORY_META[categoryPageKey] || {
-                label: normalizeCategory(categoryPageKey),
-                icon: "\uD83D\uDCE6",
-              };
-              const categoryItems = loading ? [] : categoryItemsByKey[categoryPageKey] || [];
-              return (
-                <div key={stepKey} className="cv-public-flip-page cv-public-flip-page--categories">
-                  <div className="cv-public-flip-content">
-                    <header className="cv-public-flip-header">
-                      <p className="cv-public-menu-kicker">Category</p>
-                      <h2 className="cv-public-flip-title">
-                        {meta.icon} {meta.label}
-                      </h2>
-                      <p className="cv-public-menu-subtitle">
-                        {loading ? "Loading..." : `${categoryItems.length} items`}
-                      </p>
-                    </header>
-                    <div className="cv-public-flip-scroll">
-                      <div className="cv-public-category-chip-row">
-                        {QR_CATEGORY_PAGE_KEYS.map((chipKey) => {
-                          const chipMeta = CATEGORY_META[chipKey] || {
-                            label: normalizeCategory(chipKey),
-                            icon: "\uD83D\uDCE6",
-                          };
-                          return (
-                            <button
-                              key={chipKey}
-                              type="button"
-                              onClick={() => goToStep(toCategoryStep(chipKey))}
-                              className={`cv-public-cat-chip ${
-                                chipKey === categoryPageKey ? "is-active" : ""
-                              }`}
-                            >
-                              {chipMeta.icon} {chipMeta.label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      {categoryItems.length === 0 && !loading ? (
-                        <div className="cv-public-flip-note mt-3">
-                          <h3>No items in {meta.label}</h3>
-                          <p>Use another category page to continue browsing.</p>
-                        </div>
-                      ) : (
-                        <div className="cv-public-category-items-grid mt-3">
-                          {categoryItems.map((item) => {
-                            const qty = Number(cart[String(item.id)] || 0);
+              {QR_CATEGORY_PAGE_KEYS.map((categoryPageKey) => {
+                const stepKey = toCategoryStep(categoryPageKey);
+                const meta = CATEGORY_META[categoryPageKey] || {
+                  label: normalizeCategory(categoryPageKey),
+                  icon: "\uD83D\uDCE6",
+                };
+                const categoryItems = loading ? [] : categoryItemsByKey[categoryPageKey] || [];
+                return (
+                  <div key={stepKey} className="cv-public-flip-page cv-public-flip-page--categories">
+                    <div className="cv-public-flip-content">
+                      <header className="cv-public-flip-header">
+                        <p className="cv-public-menu-kicker">Category</p>
+                        <h2 className="cv-public-flip-title">
+                          {meta.icon} {meta.label}
+                        </h2>
+                        <p className="cv-public-menu-subtitle">
+                          {loading ? "Loading..." : `${categoryItems.length} items`}
+                        </p>
+                      </header>
+                      <div className="cv-public-flip-scroll">
+                        <div className="cv-public-category-chip-row">
+                          {QR_CATEGORY_PAGE_KEYS.map((chipKey) => {
+                            const chipMeta = CATEGORY_META[chipKey] || {
+                              label: normalizeCategory(chipKey),
+                              icon: "\uD83D\uDCE6",
+                            };
                             return (
-                              <article
-                                key={String(item.id)}
-                                className="cv-public-menu-card cv-public-menu-card--category"
+                              <button
+                                key={chipKey}
+                                type="button"
+                                onClick={() => goToStep(toCategoryStep(chipKey))}
+                                className={`cv-public-cat-chip ${
+                                  chipKey === categoryPageKey ? "is-active" : ""
+                                }`}
                               >
-                                <div className="cv-public-menu-image-wrap">
-                                  {item.image_url ? (
-                                    <img src={item.image_url} alt={item.name} className="cv-public-menu-image" />
-                                  ) : (
-                                    <div className="cv-public-menu-image-placeholder">No Image</div>
-                                  )}
-                                </div>
-                                <div className="p-3">
-                                  <h3 className="text-sm font-extrabold text-slate-900">{item.name}</h3>
-                                  <p className="text-xs font-semibold text-slate-500">
-                                    {normalizeCategory(item.category)}
-                                  </p>
-                                  <div className="mt-2 flex items-center justify-between">
-                                    <span className="text-sm font-black text-slate-900">{toMoney(item.price)}</span>
-                                    <div className="flex items-center gap-1">
-                                      <button
-                                        type="button"
-                                        onClick={() => changeQty(item.id, -1)}
-                                        className="cv-public-qty-btn"
-                                        disabled={qty <= 0}
-                                      >
-                                        -
-                                      </button>
-                                      <span className="w-6 text-center text-sm font-black">{qty}</span>
-                                      <button
-                                        type="button"
-                                        onClick={() => changeQty(item.id, 1)}
-                                        className="cv-public-qty-btn"
-                                      >
-                                        +
-                                      </button>
-                                    </div>
-                                  </div>
-                                </div>
-                              </article>
+                                {chipMeta.icon} {chipMeta.label}
+                              </button>
                             );
                           })}
                         </div>
-                      )}
+                        {categoryItems.length === 0 && !loading ? (
+                          <div className="cv-public-flip-note mt-3">
+                            <h3>No items in {meta.label}</h3>
+                            <p>Use another category page to continue browsing.</p>
+                          </div>
+                        ) : (
+                          <div className="cv-public-category-items-grid mt-3">
+                            {categoryItems.map((item) => {
+                              const qty = Number(cart[String(item.id)] || 0);
+                              return (
+                                <article
+                                  key={String(item.id)}
+                                  className="cv-public-menu-card cv-public-menu-card--category"
+                                >
+                                  <div className="cv-public-menu-image-wrap">
+                                    {item.image_url ? (
+                                      <img src={item.image_url} alt={item.name} className="cv-public-menu-image" />
+                                    ) : (
+                                      <div className="cv-public-menu-image-placeholder">No Image</div>
+                                    )}
+                                  </div>
+                                  <div className="p-3">
+                                    <h3 className="text-sm font-extrabold text-slate-900">{item.name}</h3>
+                                    <p className="text-xs font-semibold text-slate-500">
+                                      {normalizeCategory(item.category)}
+                                    </p>
+                                    <div className="mt-2 flex items-center justify-between">
+                                      <span className="text-sm font-black text-slate-900">{toMoney(item.price)}</span>
+                                      <div className="flex items-center gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => changeQty(item.id, -1)}
+                                          className="cv-public-qty-btn"
+                                          disabled={qty <= 0}
+                                        >
+                                          -
+                                        </button>
+                                        <span className="w-6 text-center text-sm font-black">{qty}</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => changeQty(item.id, 1)}
+                                          className="cv-public-qty-btn"
+                                        >
+                                          +
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </article>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                      <div className="cv-public-page-number">{(STEP_INDEX[stepKey] || 0) + 1}</div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
 
-            <div className="cv-public-flip-page cv-public-flip-page--cart">
-              <div className="cv-public-flip-content">
-                <header className="cv-public-flip-header">
-                  <p className="cv-public-menu-kicker">Cart</p>
-                  <h2 className="cv-public-flip-title">Your Order</h2>
-                  <p className="cv-public-menu-subtitle">{cartCount} items</p>
-                </header>
-                <div className="cv-public-flip-scroll">
-                  <div className="space-y-4 cv-public-order-stack">
-                    {cartLines.length === 0 ? (
-                      <div className="cv-public-flip-note">
-                        <h3>Your cart is empty</h3>
-                        <p>Add items from Categories.</p>
+              <div className="cv-public-flip-page cv-public-flip-page--cart">
+                <div className="cv-public-flip-content">
+                  <header className="cv-public-flip-header">
+                    <p className="cv-public-menu-kicker">Cart</p>
+                    <h2 className="cv-public-flip-title">Your Order</h2>
+                    <p className="cv-public-menu-subtitle">{cartCount} items</p>
+                  </header>
+                  <div className="cv-public-flip-scroll">
+                    <div className="space-y-4 cv-public-order-stack">
+                      {cartLines.length === 0 ? (
+                        <div className="cv-public-flip-note">
+                          <h3>Your cart is empty</h3>
+                          <p>Add items from Categories.</p>
+                        </div>
+                      ) : (
+                        <div className="cv-public-cart-panel cv-public-cart-panel--flat cv-public-order-summary-card">
+                          <div className="cv-public-cart-lines">
+                            {cartLines.map((line) => (
+                              <div key={`cart-${line.productId}`} className="cv-public-cart-line">
+                                <div className="min-w-0">
+                                  <div className="truncate text-sm font-bold text-slate-900">
+                                    {line.item?.name}
+                                  </div>
+                                  <div className="text-xs text-slate-500">{toMoney(line.item?.price)} each</div>
+                                </div>
+                                <div className="text-right text-sm font-extrabold text-slate-900">
+                                  x{line.qty} | {toMoney(line.lineTotal)}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                            <div className="text-xs font-semibold uppercase text-slate-500">
+                              Estimated Total
+                            </div>
+                            <div className="mt-1 text-lg font-extrabold text-slate-900">
+                              {toMoney(cartTotal)}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm cv-public-order-form-shell">
+                        <header className="mb-3">
+                          <p className="cv-public-menu-kicker">Place Your Order</p>
+                          <h3 className="text-base font-extrabold text-slate-900">Customer Details</h3>
+                          <p className="text-xs font-semibold text-slate-500">
+                            Fill details below and submit order from this section.
+                          </p>
+                        </header>
+                        <PublicOrderPaymentForm
+                          detectedTable={detectedTable}
+                          cartTotal={cartTotal}
+                          cartLineCount={cartLines.length}
+                          submitting={submitting}
+                          resetToken={paymentFormResetToken}
+                          onSubmit={submitOrder}
+                        />
+                      </section>
+                    </div>
+                  </div>
+                  <div className="cv-public-page-number">{STEP_INDEX.cart + 1}</div>
+                </div>
+              </div>
+
+              <div className="cv-public-flip-page cv-public-flip-page--thanks">
+                <div className="cv-public-flip-content">
+                  <header className="cv-public-flip-header">
+                    <p className="cv-public-menu-kicker">Order Complete</p>
+                    <h2 className="cv-public-flip-title">Thank You</h2>
+                  </header>
+                  <div className="cv-public-flip-scroll">
+                    {orderSuccess ? (
+                      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                        <div className="text-sm font-semibold text-emerald-900">
+                          Reference: {orderSuccess.reference || "-"}
+                        </div>
+                        <div className="mt-2 text-sm font-semibold text-emerald-900">
+                          Invoice: {orderSuccess.invoice_number || "-"}
+                        </div>
+                        <button type="button" onClick={startNewOrder} className="cv-public-submit-btn mt-4">
+                          Start New Order
+                        </button>
                       </div>
                     ) : (
-                      <div className="cv-public-cart-panel cv-public-cart-panel--flat cv-public-order-summary-card">
-                        <div className="cv-public-cart-lines">
-                          {cartLines.map((line) => (
-                            <div key={`cart-${line.productId}`} className="cv-public-cart-line">
-                              <div className="min-w-0">
-                                <div className="truncate text-sm font-bold text-slate-900">
-                                  {line.item?.name}
-                                </div>
-                                <div className="text-xs text-slate-500">{toMoney(line.item?.price)} each</div>
-                              </div>
-                              <div className="text-right text-sm font-extrabold text-slate-900">
-                                x{line.qty} | {toMoney(line.lineTotal)}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                          <div className="text-xs font-semibold uppercase text-slate-500">
-                            Estimated Total
-                          </div>
-                          <div className="mt-1 text-lg font-extrabold text-slate-900">
-                            {toMoney(cartTotal)}
-                          </div>
-                        </div>
+                      <div className="cv-public-flip-note">
+                        <h3>No completed order</h3>
+                        <p>Place your order from the Cart page.</p>
                       </div>
                     )}
-
-                    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm cv-public-order-form-shell">
-                      <header className="mb-3">
-                        <p className="cv-public-menu-kicker">Place Your Order</p>
-                        <h3 className="text-base font-extrabold text-slate-900">Customer Details</h3>
-                        <p className="text-xs font-semibold text-slate-500">
-                          Fill details below and submit order from this section.
-                        </p>
-                      </header>
-                      <PublicOrderPaymentForm
-                        detectedTable={detectedTable}
-                        cartTotal={cartTotal}
-                        cartLineCount={cartLines.length}
-                        submitting={submitting}
-                        resetToken={paymentFormResetToken}
-                        onSubmit={submitOrder}
-                      />
-                    </section>
                   </div>
+                  <div className="cv-public-page-number">{STEP_INDEX.thanks + 1}</div>
                 </div>
               </div>
-            </div>
-
-            <div className="cv-public-flip-page cv-public-flip-page--thanks">
-              <div className="cv-public-flip-content">
-                <header className="cv-public-flip-header">
-                  <p className="cv-public-menu-kicker">Order Complete</p>
-                  <h2 className="cv-public-flip-title">Thank You</h2>
-                </header>
-                <div className="cv-public-flip-scroll">
-                  {orderSuccess ? (
-                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-                      <div className="text-sm font-semibold text-emerald-900">
-                        Reference: {orderSuccess.reference || "-"}
-                      </div>
-                      <div className="mt-2 text-sm font-semibold text-emerald-900">
-                        Invoice: {orderSuccess.invoice_number || "-"}
-                      </div>
-                      <button type="button" onClick={startNewOrder} className="cv-public-submit-btn mt-4">
-                        Start New Order
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="cv-public-flip-note">
-                      <h3>No completed order</h3>
-                      <p>Place your order from the Cart page.</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </HTMLFlipBook>
+            </HTMLFlipBook>
+          </div>
         </div>
 
         <div className="cv-public-book-controls cv-public-book-controls--wide">
           <button
             type="button"
-            onClick={() => goToStep("cover")}
-            className={`cv-public-book-nav-btn ${activeStep === "cover" ? "is-active" : ""}`}
-          >
-            Cover
-          </button>
-          <button
-            type="button"
-            onClick={() => goToStep(FIRST_CATEGORY_STEP)}
-            className={`cv-public-book-nav-btn ${isCategoryStep ? "is-active" : ""}`}
-          >
-            Categories
-          </button>
-          <button
-            type="button"
-            onClick={() => goToStep("cart")}
-            className={`cv-public-book-nav-btn ${activeStep === "cart" ? "is-active" : ""}`}
-          >
-            Cart
-          </button>
-          <button
-            type="button"
-            onClick={() => goToStep("thanks")}
-            className={`cv-public-book-nav-btn ${activeStep === "thanks" ? "is-active" : ""}`}
-            disabled={!orderSuccess}
-          >
-            Thank You
-          </button>
-          <button
-            type="button"
             onClick={goPrev}
-            className="cv-public-book-nav-btn"
+            className="cv-public-book-nav-btn cv-public-book-nav-btn--arrow"
             disabled={activeStepIndex <= STEP_INDEX.cover}
           >
-            Prev
+            Previous
           </button>
           <button
             type="button"
             onClick={goNext}
-            className="cv-public-book-nav-btn"
+            className="cv-public-book-nav-btn cv-public-book-nav-btn--arrow"
             disabled={activeStepIndex >= maxStepIndex}
           >
             Next
