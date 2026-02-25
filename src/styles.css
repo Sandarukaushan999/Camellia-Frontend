@@ -1530,6 +1530,12 @@ body {
   border-top: 1px dashed rgba(200, 210, 224, 0.8);
 }
 
+.cv-public-flip-footer--split {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.52rem;
+}
+
 .cv-public-flip-note {
   border: 1px solid rgba(210, 219, 230, 0.85);
   border-radius: 0.9rem;
@@ -1935,6 +1941,18 @@ body {
   padding: 0.55rem 0.65rem;
 }
 
+.cv-public-flip-page--cart .cv-public-cart-lines,
+.cv-public-flip-page--payment .cv-public-flip-scroll {
+  overscroll-behavior: contain;
+}
+
+.cv-public-flip-page--payment form,
+.cv-public-flip-page--payment input,
+.cv-public-flip-page--payment select,
+.cv-public-flip-page--payment textarea {
+  touch-action: manipulation;
+}
+
 .cv-public-input {
   width: 100%;
   border-radius: 0.7rem;
@@ -2048,6 +2066,10 @@ body {
 @media (max-width: 880px) {
   .cv-public-category-grid,
   .cv-public-category-items-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cv-public-flip-footer--split {
     grid-template-columns: 1fr;
   }
 

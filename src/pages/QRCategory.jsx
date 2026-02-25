@@ -29,6 +29,14 @@ function buildQrImageUrl(targetUrl, size = 320) {
   )}`;
 }
 
+function parseTableNumber(value, fallback) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(1, Math.min(200, parsed));
+}
+
 function toMoney(amount) {
   return `Rs. ${Number(amount || 0).toLocaleString("en-US", {
     minimumFractionDigits: 2,
@@ -50,6 +58,10 @@ export default function QRCategory() {
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [message, setMessage] = useState("");
   const [copied, setCopied] = useState(false);
+  const [copiedTableLabel, setCopiedTableLabel] = useState("");
+  const [tablePrefix, setTablePrefix] = useState("T");
+  const [tableStart, setTableStart] = useState(1);
+  const [tableEnd, setTableEnd] = useState(20);
 
   useEffect(() => onActiveBranchChange((nextBranchId) => setActiveBranchId(nextBranchId)), []);
 
@@ -99,6 +111,26 @@ export default function QRCategory() {
 
   const menuUrl = useMemo(() => `${normalizedPublicHost}${menuPath}`, [menuPath, normalizedPublicHost]);
   const qrImageUrl = useMemo(() => buildQrImageUrl(menuUrl, 340), [menuUrl]);
+  const tableMenuLinks = useMemo(() => {
+    const start = Math.min(tableStart, tableEnd);
+    const end = Math.max(tableStart, tableEnd);
+    const links = [];
+    for (let number = start; number <= end; number += 1) {
+      const tableLabel = `${String(tablePrefix || "").trim()}${number}`.trim() || String(number);
+      const tableUrl = `${menuUrl}${menuUrl.includes("?") ? "&" : "?"}table=${encodeURIComponent(
+        tableLabel
+      )}`;
+      links.push({
+        tableLabel,
+        tableUrl,
+        qrUrl: buildQrImageUrl(tableUrl, 220),
+      });
+      if (links.length >= 100) {
+        break;
+      }
+    }
+    return links;
+  }, [menuUrl, tableEnd, tablePrefix, tableStart]);
 
   useEffect(() => {
     try {
@@ -153,6 +185,18 @@ export default function QRCategory() {
     } catch (err) {
       console.error("Failed to copy menu URL:", err);
       setMessage("Failed to copy menu link");
+      setTimeout(() => setMessage(""), 1800);
+    }
+  };
+
+  const copyTableUrl = async (tableUrl, tableLabel) => {
+    try {
+      await navigator.clipboard.writeText(tableUrl);
+      setCopiedTableLabel(tableLabel);
+      setTimeout(() => setCopiedTableLabel(""), 1600);
+    } catch (err) {
+      console.error("Failed to copy table menu URL:", err);
+      setMessage("Failed to copy table link");
       setTimeout(() => setMessage(""), 1800);
     }
   };
@@ -218,6 +262,49 @@ export default function QRCategory() {
               <div className="mt-1 break-all text-sm font-medium text-gray-800">{menuUrl}</div>
             </div>
 
+            <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Table QR Setup
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                <label className="text-[11px] font-semibold uppercase tracking-wide text-gray-600">
+                  Prefix
+                  <input
+                    type="text"
+                    value={tablePrefix}
+                    onChange={(event) => setTablePrefix(String(event.target.value || "").slice(0, 8))}
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
+                    placeholder="T"
+                  />
+                </label>
+                <label className="text-[11px] font-semibold uppercase tracking-wide text-gray-600">
+                  Start
+                  <input
+                    type="number"
+                    min={1}
+                    max={200}
+                    value={tableStart}
+                    onChange={(event) => setTableStart(parseTableNumber(event.target.value, 1))}
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
+                  />
+                </label>
+                <label className="text-[11px] font-semibold uppercase tracking-wide text-gray-600">
+                  End
+                  <input
+                    type="number"
+                    min={1}
+                    max={200}
+                    value={tableEnd}
+                    onChange={(event) => setTableEnd(parseTableNumber(event.target.value, tableStart))}
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
+                  />
+                </label>
+              </div>
+              <p className="mt-2 text-xs text-gray-500">
+                Generates one QR per table. Auto table detection works via `?table=`.
+              </p>
+            </div>
+
             <div className="mt-4 grid grid-cols-2 gap-2">
               <button
                 type="button"
@@ -263,6 +350,9 @@ export default function QRCategory() {
                 <span className="rounded-full bg-emerald-50 px-3 py-1 font-semibold text-emerald-700">
                   {totalItems} items
                 </span>
+                <span className="rounded-full bg-violet-50 px-3 py-1 font-semibold text-violet-700">
+                  {tableMenuLinks.length} table QRs
+                </span>
               </div>
             </div>
 
@@ -294,6 +384,52 @@ export default function QRCategory() {
                 ))}
               </div>
             )}
+
+            <div className="mt-5 rounded-xl border border-gray-200 p-3">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h3 className="text-sm font-bold text-gray-900">Table QR Codes</h3>
+                <span className="text-xs font-semibold text-gray-500">
+                  Up to 100 cards per range
+                </span>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {tableMenuLinks.map((entry) => (
+                  <article
+                    key={entry.tableLabel}
+                    className="rounded-xl border border-gray-200 bg-gray-50 p-3"
+                  >
+                    <div className="text-sm font-extrabold text-gray-900">Table {entry.tableLabel}</div>
+                    <div className="mt-2 flex justify-center rounded-lg border border-gray-200 bg-white p-2">
+                      <img
+                        src={entry.qrUrl}
+                        alt={`QR for table ${entry.tableLabel}`}
+                        className="h-[120px] w-[120px] object-contain"
+                      />
+                    </div>
+                    <div className="mt-2 truncate text-[11px] font-medium text-gray-600">
+                      {entry.tableUrl}
+                    </div>
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => copyTableUrl(entry.tableUrl, entry.tableLabel)}
+                        className="cv-acid-btn rounded-md px-2 py-1 text-xs font-semibold"
+                      >
+                        {copiedTableLabel === entry.tableLabel ? "Copied" : "Copy"}
+                      </button>
+                      <a
+                        href={entry.tableUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="cv-acid-btn-soft rounded-md px-2 py-1 text-xs font-semibold"
+                      >
+                        Open
+                      </a>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
           </section>
         </div>
       </div>
