@@ -1,5 +1,6 @@
 import React from "react";
 import logo from "../assests/Clogo.jpeg";
+import { formatBusinessDate, formatBusinessTime } from "../utils/timezone.js";
 
 export default function Receipt({ orderData }) {
   if (!orderData) return null;
@@ -38,14 +39,19 @@ export default function Receipt({ orderData }) {
   };
 
   const formatDate = (dateStr) => {
-    if (!dateStr) return new Date().toLocaleDateString("en-US");
-    return new Date(dateStr).toLocaleDateString("en-US");
+    if (!dateStr) return formatBusinessDate(new Date());
+    return formatBusinessDate(dateStr);
   };
 
   const formatTime = (timeStr) => {
-    if (!timeStr) return new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+    if (!timeStr) {
+      return formatBusinessTime(new Date(), { hour: "2-digit", minute: "2-digit" });
+    }
     if (timeStr.includes(":")) return timeStr;
-    return new Date(`2000-01-01T${timeStr}`).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+    return formatBusinessTime(`2000-01-01T${timeStr}`, {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   };
 
   // Truncate item names for receipt (max 20 chars)

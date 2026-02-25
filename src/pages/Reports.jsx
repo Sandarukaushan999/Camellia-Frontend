@@ -1,16 +1,17 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import api from "../utils/api.js";
 import { getActiveBranchId, onActiveBranchChange } from "../utils/branchContext.js";
+import { formatBusinessDateTime } from "../utils/timezone.js";
 
 const REPORT_TYPES = [
-  { id: "sales", label: "Sales", icon: "📊" },
-  { id: "products", label: "Products", icon: "🍔" },
-  { id: "profit", label: "Profit & Expenses", icon: "💰" },
-  { id: "inventory", label: "Inventory", icon: "📦" },
-  { id: "payment", label: "Payments", icon: "💳" },
-  { id: "forecast", label: "Forecast", icon: "📈" },
-  { id: "customers", label: "Customer Segments", icon: "👥" },
-  { id: "exports", label: "Export Queue", icon: "🧾" },
+  { id: "sales", label: "Sales", icon: "??" },
+  { id: "products", label: "Products", icon: "??" },
+  { id: "profit", label: "Profit & Expenses", icon: "??" },
+  { id: "inventory", label: "Inventory", icon: "??" },
+  { id: "payment", label: "Payments", icon: "??" },
+  { id: "forecast", label: "Forecast", icon: "??" },
+  { id: "customers", label: "Customer Segments", icon: "??" },
+  { id: "exports", label: "Export Queue", icon: "??" },
 ];
 
 function toMoney(amount) {
@@ -399,7 +400,7 @@ export default function Reports() {
                           return (
                             <tr key={row.id} className="border-t">
                               <td className="px-4 py-3">#{row.id}</td>
-                              <td className="px-4 py-3">{new Date(row.createdAt).toLocaleString()}</td>
+                              <td className="px-4 py-3">{formatBusinessDateTime(row.createdAt)}</td>
                               <td className="px-4 py-3">{row.orderType || "-"}</td>
                               <td className="px-4 py-3">{row.paymentMethod || "-"}</td>
                               <td className="px-4 py-3 text-right">{toMoney(gross)}</td>
@@ -471,7 +472,7 @@ export default function Reports() {
                       ) : (
                         expenses.map((exp) => (
                           <tr key={exp.id} className="border-t">
-                            <td className="px-4 py-3">{new Date(exp.incurred_at).toLocaleString()}</td>
+                            <td className="px-4 py-3">{formatBusinessDateTime(exp.incurred_at)}</td>
                             <td className="px-4 py-3">{exp.category}</td>
                             <td className="px-4 py-3">{exp.description || "-"}</td>
                             <td className="px-4 py-3 text-right font-semibold">{toMoney(exp.amount)}</td>
@@ -658,9 +659,9 @@ export default function Reports() {
                           <td className="px-4 py-3">#{job.id}</td>
                           <td className="px-4 py-3">{job.report_type}</td>
                           <td className="px-4 py-3">{job.status}</td>
-                          <td className="px-4 py-3">{new Date(job.scheduled_for).toLocaleString()}</td>
+                          <td className="px-4 py-3">{formatBusinessDateTime(job.scheduled_for)}</td>
                           <td className="px-4 py-3">
-                            {job.generated_at ? new Date(job.generated_at).toLocaleString() : "-"}
+                            {job.generated_at ? formatBusinessDateTime(job.generated_at) : "-"}
                           </td>
                           <td className="px-4 py-3 text-right">
                             <div className="flex items-center justify-end gap-2">
@@ -701,3 +702,4 @@ export default function Reports() {
     </div>
   );
 }
+

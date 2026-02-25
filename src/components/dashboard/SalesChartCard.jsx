@@ -13,11 +13,13 @@ import {
 import CardShell from "./primitives/CardShell.jsx";
 import SkeletonBlock from "./primitives/SkeletonBlock.jsx";
 import { dashboardAnimationConfig, withReducedMotion } from "./animationsConfig.js";
+import { formatBusinessDate } from "../../utils/timezone.js";
 
-const rangeOptions = [
-  { value: "7d", label: "7D" },
-  { value: "30d", label: "30D" },
-  { value: "90d", label: "90D" },
+const defaultRangeOptions = [
+  { value: "daily", label: "Daily" },
+  { value: "seven_days", label: "7 Days" },
+  { value: "monthly", label: "Monthly" },
+  { value: "yearly", label: "Yearly" },
 ];
 
 function formatRelativeTime(dateValue) {
@@ -66,14 +68,11 @@ function SalesTooltip({ active, payload, label, formatCurrency }) {
     return null;
   }
 
-  const date = new Date(label);
-  const dateLabel = Number.isNaN(date.getTime())
-    ? label
-    : date.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
+  const dateLabel = formatBusinessDate(label, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white/95 p-3 shadow-lg">
@@ -88,8 +87,10 @@ export default function SalesChartCard({
   loading,
   range,
   onRangeChange,
+  rangeOptions = defaultRangeOptions,
   lastUpdated,
   formatCurrency,
+  title = "Sales Trend",
 }) {
   const reducedMotion = useReducedMotion();
 
@@ -107,7 +108,7 @@ export default function SalesChartCard({
 
   return (
     <CardShell
-      title="Monthly Sales"
+      title={title}
       subtitle={formatRelativeTime(lastUpdated)}
       icon={<i className="fi-rr-chart-line-up" aria-hidden="true" />}
       action={

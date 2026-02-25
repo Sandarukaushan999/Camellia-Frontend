@@ -73,7 +73,12 @@ function TopItemsSkeleton() {
   );
 }
 
-export default function TopSellingItemsCard({ loading, items, formatCurrency }) {
+export default function TopSellingItemsCard({
+  loading,
+  items,
+  formatCurrency,
+  subtitle = "Best performing products",
+}) {
   const [visibleCount, setVisibleCount] = useState(5);
   const reducedMotion = useReducedMotion();
 
@@ -83,7 +88,7 @@ export default function TopSellingItemsCard({ loading, items, formatCurrency }) 
   return (
     <CardShell
       title="Top Selling Items"
-      subtitle="Best performing products today"
+      subtitle={subtitle}
       icon={<i className="fi-rr-star" aria-hidden="true" />}
       action={
         items.length > 5 ? (

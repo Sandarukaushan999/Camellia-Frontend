@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import api from "../utils/api.js";
 import { getActiveBranchId, onActiveBranchChange } from "../utils/branchContext.js";
+import { formatBusinessDateTime } from "../utils/timezone.js";
 
 function toMoney(amount) {
   return `Rs. ${Number(amount || 0).toLocaleString("en-US", {
@@ -13,11 +14,7 @@ function toDateTime(value) {
   if (!value) {
     return "-";
   }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "-";
-  }
-  return date.toLocaleString("en-US", {
+  return formatBusinessDateTime(value, {
     year: "numeric",
     month: "short",
     day: "2-digit",
@@ -33,9 +30,24 @@ function getStatusTone(status) {
   return "ok";
 }
 
+const SALES_PERIOD_OPTIONS = [
+  { value: "daily", label: "Daily", days: 1 },
+  { value: "monthly", label: "Monthly", days: 30 },
+  { value: "yearly", label: "Yearly", days: 365 },
+];
+
+const SALES_PERIOD_DAYS = SALES_PERIOD_OPTIONS.reduce((acc, option) => {
+  acc[option.value] = option.days;
+  return acc;
+}, {});
+
+function getSalesPeriodMeta(value) {
+  return SALES_PERIOD_OPTIONS.find((option) => option.value === value) || SALES_PERIOD_OPTIONS[0];
+}
+
 export default function Sales() {
   const [activeBranchId, setActiveBranchId] = useState(() => getActiveBranchId(null));
-  const [days, setDays] = useState("30");
+  const [period, setPeriod] = useState("daily");
   const [paymentMethod, setPaymentMethod] = useState("ALL");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
@@ -51,11 +63,12 @@ export default function Sales() {
   }, [searchInput]);
 
   const loadSales = async () => {
+    const selectedDays = SALES_PERIOD_DAYS[period] || 1;
     setLoading(true);
     setMessage("");
     try {
       const params = {
-        days: Number(days) || 30,
+        days: selectedDays,
         limit: 300,
         offset: 0,
         branch_id: activeBranchId || undefined,
@@ -76,7 +89,7 @@ export default function Sales() {
   useEffect(() => {
     loadSales();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeBranchId, days, paymentMethod, search]);
+  }, [activeBranchId, paymentMethod, period, search]);
 
   const summary = useMemo(() => {
     return salesRows.reduce(
@@ -96,6 +109,8 @@ export default function Sales() {
     );
   }, [salesRows]);
 
+  const periodMeta = getSalesPeriodMeta(period);
+
   return (
     <div className="cv-page cv-page--sales p-4 md:p-6 space-y-6">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -103,7 +118,7 @@ export default function Sales() {
           <div>
             <h1 className="cv-page-title text-2xl font-bold text-gray-900">Sales</h1>
             <p className="cv-page-subtitle text-sm text-gray-600 mt-1">
-              Invoice ledger with customer, item, payment, discount, and loyalty details
+              {periodMeta.label} invoice ledger with customer, item, payment, discount, and loyalty details
             </p>
           </div>
           <button
@@ -120,16 +135,20 @@ export default function Sales() {
             <label className="block text-xs font-semibold tracking-wide text-gray-600 uppercase mb-2">
               Range
             </label>
-            <select
-              value={days}
-              onChange={(event) => setDays(event.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-gray-300"
-            >
-              <option value="7">Last 7 days</option>
-              <option value="30">Last 30 days</option>
-              <option value="90">Last 90 days</option>
-              <option value="365">Last 365 days</option>
-            </select>
+            <div className="cv-sales-period-tabs inline-flex w-full rounded-lg p-1">
+              {SALES_PERIOD_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setPeriod(option.value)}
+                  className={`cv-sales-period-tab flex-1 rounded-md px-3 py-2 text-xs font-semibold transition-colors ${
+                    period === option.value ? "is-active" : ""
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
           </div>
           <div>
             <label className="block text-xs font-semibold tracking-wide text-gray-600 uppercase mb-2">
@@ -274,4 +293,3 @@ export default function Sales() {
     </div>
   );
 }
-

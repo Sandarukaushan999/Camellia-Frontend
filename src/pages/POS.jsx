@@ -4,6 +4,7 @@ import Receipt from "../components/Receipt.jsx";
 import ReceiptPreview from "../components/ReceiptPreview.jsx";
 import { useAuth } from "../state/AuthContext.jsx";
 import { getActiveBranchId, onActiveBranchChange } from "../utils/branchContext.js";
+import { formatBusinessDateTime, formatBusinessTime } from "../utils/timezone.js";
 
 const CATEGORY_ICONS = {
   ALL: "📦",
@@ -758,7 +759,7 @@ export default function POS() {
         billNo: res.data.id,
         invoiceNo: invoiceNumber,
         date: new Date().toISOString().split("T")[0],
-        time: new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
+        time: formatBusinessTime(new Date(), { hour: "2-digit", minute: "2-digit" }),
         orderType: orderType,
         tableNumber: orderType === "DINE-IN" ? (tableNumber || null) : null,
         customerName: resolvedCustomerName || (orderType === "DELIVERY" ? (customerName || tableNumber || null) : null),
@@ -1156,7 +1157,7 @@ export default function POS() {
                 <div className="space-y-3">
                   {heldOrders.map((held) => {
                     const createdAt = held.created_at
-                      ? new Date(held.created_at).toLocaleString()
+                      ? formatBusinessDateTime(held.created_at)
                       : "-";
                     const itemCount = Array.isArray(held.items) ? held.items.length : 0;
                     const recalling = heldActionBusyId === `recall-${held.id}`;

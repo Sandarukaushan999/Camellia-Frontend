@@ -6,29 +6,71 @@ import KpiCards from "./KpiCards.jsx";
 import SalesChartCard from "./SalesChartCard.jsx";
 import OrderBreakdownCard from "./OrderBreakdownCard.jsx";
 import TopSellingItemsCard from "./TopSellingItemsCard.jsx";
+import ItemSalesMonthChartCard from "./ItemSalesMonthChartCard.jsx";
 import RecentActivityCard from "./RecentActivityCard.jsx";
 import InventoryAlertsCard from "./InventoryAlertsCard.jsx";
 import QuickActionsCard from "./QuickActionsCard.jsx";
-import { dashboardMockData } from "./dashboardMockData.js";
 import { FadeInItem, FadeInStagger } from "./primitives/FadeIn.jsx";
 import { getActiveBranchId, onActiveBranchChange } from "../../utils/branchContext.js";
+import {
+  formatBusinessDate,
+  formatBusinessTime,
+  toBusinessDateKey,
+} from "../../utils/timezone.js";
 import "./dashboard.css";
 
-const RANGE_DAYS = {
-  "7d": 7,
-  "30d": 30,
-  "90d": 90,
-};
+const PERIOD_OPTIONS = [
+  {
+    value: "daily",
+    label: "Daily",
+    days: 1,
+    kpiLabel: "Today's Sales",
+    comparisonCaption: "Compared with yesterday",
+  },
+  {
+    value: "seven_days",
+    label: "7 Days",
+    days: 7,
+    kpiLabel: "Last 7 Days Sales",
+    comparisonCaption: "Compared with previous 7 days",
+  },
+  {
+    value: "monthly",
+    label: "Monthly",
+    days: 30,
+    kpiLabel: "Monthly Sales",
+    comparisonCaption: "Compared with previous 30 days",
+  },
+  {
+    value: "yearly",
+    label: "Yearly",
+    days: 365,
+    kpiLabel: "Yearly Sales",
+    comparisonCaption: "Compared with previous 365 days",
+  },
+];
+
+const PERIOD_DAYS = PERIOD_OPTIONS.reduce((acc, option) => {
+  acc[option.value] = option.days;
+  return acc;
+}, {});
+
+function getPeriodMeta(value) {
+  return PERIOD_OPTIONS.find((option) => option.value === value) || PERIOD_OPTIONS[0];
+}
+
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 const toDateKey = (value) => {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return String(value || "").slice(0, 10);
+  const raw = String(value || "").trim();
+  if (DATE_ONLY_PATTERN.test(raw)) {
+    return raw;
   }
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  const businessKey = toBusinessDateKey(value);
+  if (businessKey) {
+    return businessKey;
+  }
+  return raw.slice(0, 10);
 };
 
 const toNumber = (value) => {
@@ -37,12 +79,13 @@ const toNumber = (value) => {
 };
 
 const normalizeStats = (stats) => ({
-  todaySales: toNumber(stats?.todaySales),
+  todaySales: toNumber(stats?.todaySales ?? stats?.salesTotal),
   totalOrders: toNumber(stats?.totalOrders),
   avgOrderValue: toNumber(stats?.avgOrderValue),
   netProfit: toNumber(stats?.netProfit),
   activeOrders: toNumber(stats?.activeOrders),
   salesChange: toNumber(stats?.salesChange),
+  periodDays: toNumber(stats?.periodDays) || 1,
 });
 
 const normalizeChartSeries = (series) =>
@@ -82,8 +125,116 @@ const normalizeRecentOrders = (orders) =>
       }))
     : [];
 
-function buildSalesRangeData(rawSeries, range) {
-  const totalDays = RANGE_DAYS[range] || RANGE_DAYS["30d"];
+const normalizeItemSales = (items) =>
+  Array.isArray(items)
+    ? items.map((item) => ({
+        name: String(item?.name || "Unnamed"),
+        qty: toNumber(item?.qty),
+        revenue: toNumber(item?.revenue),
+      }))
+    : [];
+
+const normalizeInventoryAlerts = (payload) => {
+  const lowStock = Array.isArray(payload?.lowStock) ? payload.lowStock : [];
+  const nearExpiry = Array.isArray(payload?.nearExpiry) ? payload.nearExpiry : [];
+  const expired = Array.isArray(payload?.expired) ? payload.expired : [];
+
+  const today = new Date();
+  const dayStart = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate(),
+    0,
+    0,
+    0,
+    0
+  );
+
+  const toDaysUntil = (dateValue) => {
+    const parsed = new Date(dateValue);
+    if (Number.isNaN(parsed.getTime())) {
+      return null;
+    }
+    const targetStart = new Date(
+      parsed.getFullYear(),
+      parsed.getMonth(),
+      parsed.getDate(),
+      0,
+      0,
+      0,
+      0
+    );
+    const diffMs = targetStart.getTime() - dayStart.getTime();
+    return Math.round(diffMs / (24 * 60 * 60 * 1000));
+  };
+
+  const formatStockDetail = (item) => {
+    const stock = toNumber(item?.current_stock);
+    const minStock = toNumber(item?.min_stock);
+    const unit = String(item?.unit || "").trim();
+    const remainingText = `${stock.toLocaleString("en-US")} ${unit}`.trim();
+    const minText = `${minStock.toLocaleString("en-US")} ${unit}`.trim();
+    return `Remaining: ${remainingText}${minStock > 0 ? ` (Min: ${minText})` : ""}`;
+  };
+
+  const lowStockAlerts = lowStock.map((item) => {
+    const stock = toNumber(item?.current_stock);
+    const minStock = toNumber(item?.min_stock);
+    const severity =
+      stock <= 1 || (minStock > 0 && stock <= minStock * 0.5) ? "critical" : "low";
+
+    return {
+      id: `low-${item?.id || item?.name || Math.random()}`,
+      category: "Low Stock",
+      title: String(item?.name || "Inventory Item"),
+      detail: formatStockDetail(item),
+      severity,
+    };
+  });
+
+  const nearExpiryAlerts = nearExpiry.map((item) => {
+    const daysUntil = toDaysUntil(item?.expiry_date);
+    const detail =
+      Number.isFinite(daysUntil) && daysUntil <= 0
+        ? "Expires today"
+      : daysUntil === 1
+        ? "Expires tomorrow"
+        : Number.isFinite(daysUntil)
+        ? `Expires in ${daysUntil} days`
+        : "Near expiry";
+
+    return {
+      id: `expiry-${item?.id || item?.name || Math.random()}`,
+      category: "Near Expiry",
+      title: String(item?.name || "Inventory Item"),
+      detail,
+      severity: daysUntil !== null && daysUntil <= 1 ? "critical" : "medium",
+    };
+  });
+
+  const expiredAlerts = expired.map((item) => ({
+    id: `expired-${item?.id || item?.name || Math.random()}`,
+    category: "Expired",
+    title: String(item?.name || "Inventory Item"),
+    detail: "Item already expired",
+    severity: "critical",
+  }));
+
+  return [...expiredAlerts, ...nearExpiryAlerts, ...lowStockAlerts];
+};
+
+function formatHourWindow(hour) {
+  const toLabel = (value) => {
+    const normalized = ((value % 24) + 24) % 24;
+    const suffix = normalized >= 12 ? "PM" : "AM";
+    const twelve = normalized % 12 || 12;
+    return `${twelve} ${suffix}`;
+  };
+  return `${toLabel(hour)} - ${toLabel(hour + 1)}`;
+}
+
+function buildSalesRangeData(rawSeries, period) {
+  const totalDays = PERIOD_DAYS[period] || PERIOD_DAYS.monthly;
   const today = new Date();
 
   const totalsByDay = new Map(
@@ -96,7 +247,7 @@ function buildSalesRangeData(rawSeries, range) {
     const key = toDateKey(date);
     return {
       day: key,
-      label: date.toLocaleDateString("en-US", {
+      label: formatBusinessDate(date, {
         month: totalDays > 31 ? "short" : undefined,
         day: "numeric",
       }),
@@ -113,7 +264,16 @@ function buildPeakHours(orders) {
     if (Number.isNaN(createdAt.getTime())) {
       return;
     }
-    const hour = createdAt.getHours();
+    const hour = Number.parseInt(
+      formatBusinessTime(createdAt, {
+        hour: "2-digit",
+        hourCycle: "h23",
+      }),
+      10
+    );
+    if (!Number.isFinite(hour)) {
+      return;
+    }
     buckets.set(hour, (buckets.get(hour) || 0) + 1);
   });
 
@@ -121,16 +281,8 @@ function buildPeakHours(orders) {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3)
     .map(([hour, count]) => {
-      const start = new Date();
-      start.setHours(hour, 0, 0, 0);
-      const end = new Date(start);
-      end.setHours(hour + 1);
-
       return {
-        label: `${start.toLocaleTimeString("en-US", { hour: "numeric" })} - ${end.toLocaleTimeString(
-          "en-US",
-          { hour: "numeric" }
-        )}`,
+        label: formatHourWindow(hour),
         count,
       };
     });
@@ -144,13 +296,14 @@ export default function DashboardPage() {
   const [salesChart, setSalesChart] = useState([]);
   const [orderBreakdown, setOrderBreakdown] = useState([]);
   const [topItems, setTopItems] = useState([]);
+  const [monthlyItemSales, setMonthlyItemSales] = useState([]);
   const [recentOrders, setRecentOrders] = useState([]);
+  const [inventoryAlerts, setInventoryAlerts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingDemo, setIsLoadingDemo] = useState(false);
-  const [range, setRange] = useState("30d");
+  const [period, setPeriod] = useState("daily");
   const [lastUpdated, setLastUpdated] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
-  const [usingMockData, setUsingMockData] = useState(false);
   const [newOrderIds, setNewOrderIds] = useState([]);
   const [activeBranchId, setActiveBranchId] = useState(() => getActiveBranchId(null));
 
@@ -195,28 +348,19 @@ export default function DashboardPage() {
 
     let mounted = true;
 
-    const applyMockFallback = () => {
-      setStats((prev) => prev || normalizeStats(dashboardMockData.stats));
-      setSalesChart((prev) =>
-        prev.length > 0 ? prev : normalizeChartSeries(dashboardMockData.salesChart)
-      );
-      setOrderBreakdown((prev) =>
-        prev.length > 0 ? prev : normalizeBreakdown(dashboardMockData.orderBreakdown)
-      );
-      setTopItems((prev) => (prev.length > 0 ? prev : normalizeTopItems(dashboardMockData.topItems)));
-      setRecentOrders((prev) =>
-        prev.length > 0 ? prev : normalizeRecentOrders(dashboardMockData.recentOrders)
-      );
-      setUsingMockData(true);
-    };
-
     const fetchPrimaryData = async () => {
+      const selectedDays = PERIOD_DAYS[period] || 1;
       const branchParams = activeBranchId ? { branch_id: activeBranchId } : {};
       const [statsRes, chartRes] = await Promise.all([
-        api.get("/admin/dashboard/stats", { params: branchParams }),
+        api.get("/admin/dashboard/stats", {
+          params: {
+            days: selectedDays,
+            ...branchParams,
+          },
+        }),
         api.get("/admin/dashboard/sales-chart", {
           params: {
-            days: 90,
+            days: selectedDays,
             ...branchParams,
           },
         }),
@@ -229,16 +373,33 @@ export default function DashboardPage() {
       setStats(normalizeStats(statsRes.data));
       setSalesChart(normalizeChartSeries(chartRes.data));
       setLastUpdated(new Date());
-      setUsingMockData(false);
       setErrorMessage("");
     };
 
     const fetchSecondaryData = async () => {
+      const selectedDays = PERIOD_DAYS[period] || 1;
       const branchParams = activeBranchId ? { branch_id: activeBranchId } : {};
-      const [breakdownRes, itemsRes, ordersRes] = await Promise.all([
-        api.get("/admin/dashboard/order-breakdown", { params: branchParams }),
-        api.get("/admin/dashboard/top-items", { params: branchParams }),
-        api.get("/admin/dashboard/recent-orders", { params: branchParams }),
+      const [breakdownRes, itemsRes, monthItemsRes, ordersRes, alertsRes] = await Promise.all([
+        api.get("/admin/dashboard/order-breakdown", {
+          params: { days: selectedDays, ...branchParams },
+        }),
+        api.get("/admin/dashboard/top-items", {
+          params: { days: selectedDays, ...branchParams },
+        }),
+        api.get("/admin/dashboard/item-sales-monthly", {
+          params: { days: selectedDays, ...branchParams },
+        }),
+        api.get("/admin/dashboard/recent-orders", {
+          params: { days: selectedDays, ...branchParams },
+        }),
+        api
+          .get("/inventory/alerts", {
+            params: branchParams,
+          })
+          .catch((error) => {
+            console.error("Dashboard inventory alerts fetch failed:", error);
+            return { data: {} };
+          }),
       ]);
 
       if (!mounted) {
@@ -247,7 +408,9 @@ export default function DashboardPage() {
 
       setOrderBreakdown(normalizeBreakdown(breakdownRes.data));
       setTopItems(normalizeTopItems(itemsRes.data));
+      setMonthlyItemSales(normalizeItemSales(monthItemsRes.data));
       mergeRecentOrders(normalizeRecentOrders(ordersRes.data));
+      setInventoryAlerts(normalizeInventoryAlerts(alertsRes.data));
       setErrorMessage("");
     };
 
@@ -257,8 +420,7 @@ export default function DashboardPage() {
       } catch (error) {
         console.error("Dashboard load failed:", error);
         if (mounted) {
-          setErrorMessage("Live dashboard data is unavailable. Showing sample data.");
-          applyMockFallback();
+          setErrorMessage("Live dashboard data is unavailable.");
         }
       } finally {
         if (mounted) {
@@ -296,7 +458,7 @@ export default function DashboardPage() {
         clearTimeout(loadingDemoTimeoutRef.current);
       }
     };
-  }, [activeBranchId, mergeRecentOrders, user?.token]);
+  }, [activeBranchId, mergeRecentOrders, period, user?.token]);
 
   const replayLoadingState = () => {
     setIsLoadingDemo(true);
@@ -306,23 +468,24 @@ export default function DashboardPage() {
     loadingDemoTimeoutRef.current = setTimeout(() => setIsLoadingDemo(false), 1200);
   };
 
-  const effectiveStats = stats || normalizeStats(dashboardMockData.stats);
-  const effectiveBreakdown =
-    orderBreakdown.length > 0 ? orderBreakdown : normalizeBreakdown(dashboardMockData.orderBreakdown);
-  const effectiveTopItems = topItems.length > 0 ? topItems : normalizeTopItems(dashboardMockData.topItems);
-  const effectiveRecentOrders =
-    recentOrders.length > 0 ? recentOrders : normalizeRecentOrders(dashboardMockData.recentOrders);
-  const effectiveSalesChart =
-    salesChart.length > 0 ? salesChart : normalizeChartSeries(dashboardMockData.salesChart);
+  const effectiveStats = stats || normalizeStats({});
+  const effectiveBreakdown = orderBreakdown;
+  const effectiveTopItems = topItems;
+  const effectiveRecentOrders = recentOrders;
+  const effectiveSalesChart = salesChart;
+  const effectiveMonthlyItemSales = monthlyItemSales;
+  const effectiveInventoryAlerts = inventoryAlerts;
 
   const salesRangeData = useMemo(
-    () => buildSalesRangeData(effectiveSalesChart, range),
-    [effectiveSalesChart, range]
+    () => buildSalesRangeData(effectiveSalesChart, period),
+    [effectiveSalesChart, period]
   );
+
+  const periodMeta = useMemo(() => getPeriodMeta(period), [period]);
 
   const peakHours = useMemo(() => {
     const generated = buildPeakHours(effectiveRecentOrders);
-    return generated.length > 0 ? generated : dashboardMockData.peakHours;
+    return generated;
   }, [effectiveRecentOrders]);
 
   const kpis = useMemo(() => {
@@ -332,11 +495,11 @@ export default function DashboardPage() {
     return [
       {
         id: "sales",
-        label: "Today's Sales",
+        label: periodMeta.kpiLabel,
         value: effectiveStats.todaySales,
         valueType: "currency",
         trend: effectiveStats.salesChange,
-        caption: "Compared with yesterday",
+        caption: periodMeta.comparisonCaption,
         iconBgClass: "bg-blue-100",
         iconClass: "text-blue-600",
         glowClass: "from-blue-200 to-blue-100",
@@ -347,7 +510,7 @@ export default function DashboardPage() {
         value: effectiveStats.totalOrders,
         valueType: "number",
         trend: effectiveStats.salesChange * 0.6,
-        caption: `${effectiveBreakdown.reduce((sum, item) => sum + item.count, 0)} in current range`,
+        caption: `${effectiveBreakdown.reduce((sum, item) => sum + item.count, 0)} in selected period`,
         iconBgClass: "bg-emerald-100",
         iconClass: "text-emerald-600",
         glowClass: "from-emerald-200 to-emerald-100",
@@ -386,7 +549,7 @@ export default function DashboardPage() {
         glowClass: "from-rose-200 to-rose-100",
       },
     ];
-  }, [effectiveBreakdown, effectiveStats]);
+  }, [effectiveBreakdown, effectiveStats, periodMeta]);
 
   const quickActions = useMemo(
     () => [
@@ -439,17 +602,31 @@ export default function DashboardPage() {
               </span>
               Operational Dashboard
             </h1>
-            <p className="cv-page-subtitle text-sm text-slate-500">Sales, orders, inventory alerts, and quick actions</p>
+            <p className="cv-page-subtitle text-sm text-slate-500">
+              {periodMeta.label} overview: sales, orders, inventory alerts, and quick actions
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {usingMockData && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">
-                <span className="cv-dashboard-icon-inline">
-                  <i className="fi-rr-info" aria-hidden="true" />
-                </span>
-                Sample data mode
-              </span>
-            )}
+            <div
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1"
+              role="group"
+              aria-label="Dashboard period filter"
+            >
+              {PERIOD_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setPeriod(option.value)}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    period === option.value
+                      ? "cv-acid-btn-soft text-slate-900"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
             {errorMessage && (
               <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-1 text-xs font-semibold text-rose-700">
                 <span className="cv-dashboard-icon-inline">
@@ -481,10 +658,15 @@ export default function DashboardPage() {
               <SalesChartCard
                 data={salesRangeData}
                 loading={cardLoading}
-                range={range}
-                onRangeChange={setRange}
+                range={period}
+                onRangeChange={setPeriod}
+                rangeOptions={PERIOD_OPTIONS.map((option) => ({
+                  value: option.value,
+                  label: option.label,
+                }))}
                 lastUpdated={lastUpdated}
                 formatCurrency={formatCurrency}
+                title={`${periodMeta.label} Sales Trend`}
               />
             </FadeInItem>
             <FadeInItem className="h-full">
@@ -499,11 +681,20 @@ export default function DashboardPage() {
 
           <div className="cv-dashboard-grid cv-dashboard-grid--equal grid grid-cols-1 gap-4 items-stretch lg:grid-cols-2">
             <FadeInItem className="h-full">
-              <TopSellingItemsCard
-                loading={cardLoading}
-                items={effectiveTopItems}
-                formatCurrency={formatCurrency}
-              />
+              <div className="grid h-full gap-4">
+                <TopSellingItemsCard
+                  loading={cardLoading}
+                  subtitle={`Best performing products (${periodMeta.label.toLowerCase()})`}
+                  items={effectiveTopItems}
+                  formatCurrency={formatCurrency}
+                />
+                <ItemSalesMonthChartCard
+                  loading={cardLoading}
+                  items={effectiveMonthlyItemSales}
+                  formatCurrency={formatCurrency}
+                  periodLabel={periodMeta.label}
+                />
+              </div>
             </FadeInItem>
             <FadeInItem className="h-full">
               <RecentActivityCard
@@ -520,7 +711,7 @@ export default function DashboardPage() {
             <FadeInItem className="h-full">
               <InventoryAlertsCard
                 loading={cardLoading}
-                alerts={dashboardMockData.inventoryAlerts}
+                alerts={effectiveInventoryAlerts}
               />
             </FadeInItem>
             <FadeInItem className="h-full">

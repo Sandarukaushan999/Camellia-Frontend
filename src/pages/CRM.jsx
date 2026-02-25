@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import api from "../utils/api.js";
+import { formatBusinessDate, formatBusinessDateTime } from "../utils/timezone.js";
 
 const TABS = ["customers", "segments", "campaigns", "loyalty", "followups"];
 
@@ -47,8 +48,7 @@ function money(v) {
 
 function dt(v) {
   if (!v) return "-";
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? "-" : d.toLocaleString();
+  return formatBusinessDateTime(v);
 }
 
 function toDateInput(v) {
@@ -828,7 +828,7 @@ export default function CRM() {
       customer_id: customer.id,
       title: `Reconnect with ${customer.full_name || "customer"}`,
       note: customer.last_order_at
-        ? `No order since ${new Date(customer.last_order_at).toLocaleDateString()}`
+        ? `No order since ${formatBusinessDate(customer.last_order_at)}`
         : "No recent order activity",
       channel: "PHONE",
       priority: "MEDIUM",

@@ -10,6 +10,7 @@ import {
   onActiveBranchChange,
   setActiveBranchId as setStoredActiveBranchId,
 } from "../utils/branchContext.js";
+import { formatBusinessDate } from "../utils/timezone.js";
 import logo from "../assests/Clogo.jpeg";
 
 const menuIconClasses = {
@@ -17,6 +18,7 @@ const menuIconClasses = {
   "POS Billing": "fi-rr-cash-register",
   Sales: "fi-rr-chart-line-up",
   Products: "fi-rr-shopping-bag",
+  "QR Category": "fi-rr-qrcode",
   Inventory: "fi-rr-boxes",
   Expenses: "fi-rr-wallet",
   Reports: "fi-rr-chart-pie-alt",
@@ -68,6 +70,12 @@ export default function MainLayout() {
         to: "/products",
         label: "Products",
         subtitle: "Menu catalog and pricing control",
+        permission: "products.view",
+      },
+      {
+        to: "/qr-category",
+        label: "QR Category",
+        subtitle: "Stable QR menu and public ordering",
         permission: "products.view",
       },
       {
@@ -388,7 +396,7 @@ export default function MainLayout() {
                   : user?.role || "USER"}
               </div>
               <div className="cv-date-chip">
-                {new Date().toLocaleDateString("en-US", {
+                {formatBusinessDate(new Date(), {
                   weekday: "short",
                   month: "short",
                   day: "numeric",

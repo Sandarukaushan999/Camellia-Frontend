@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import api from "../utils/api.js";
 import { getActiveBranchId, onActiveBranchChange } from "../utils/branchContext.js";
+import { formatBusinessDate, formatBusinessDateTime } from "../utils/timezone.js";
 
 export default function Inventory() {
   const [activeBranchId, setActiveBranchId] = useState(() => getActiveBranchId(null));
@@ -457,7 +458,7 @@ export default function Inventory() {
                             </span>
                           ) : item.expiry_date ? (
                             <span className="text-xs text-gray-500">
-                              {new Date(item.expiry_date).toLocaleDateString()}
+                              {formatBusinessDate(item.expiry_date)}
                             </span>
                           ) : (
                             <span className="text-xs text-gray-400">-</span>
@@ -670,7 +671,7 @@ export default function Inventory() {
                       )}
                     </div>
                     <div className="text-xs text-gray-600 mt-1">
-                      {(req.items || []).length} items  -  {new Date(req.created_at).toLocaleString()}
+                      {(req.items || []).length} items  -  {formatBusinessDateTime(req.created_at)}
                     </div>
                     {req.purchase_order_id && (
                       <div className="text-xs text-gray-500 mt-1">

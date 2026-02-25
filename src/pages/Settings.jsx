@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import api from "../utils/api.js";
 import { adminAPI, triggerDownload } from "../services/adminAPI.js";
+import { formatBusinessTime } from "../utils/timezone.js";
 
 const SETTINGS_SECTIONS = [
   { id: "shop", label: "Shop & Branch Info", icon: "SI" },
@@ -237,7 +238,7 @@ export default function Settings() {
         receipt: {
           billNo: "TEST",
           date: now.toISOString().slice(0, 10),
-          time: now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
+          time: formatBusinessTime(now, { hour: "2-digit", minute: "2-digit" }),
           orderType: "DINE-IN",
           tableNumber: "T1",
           customerName: "Printer Test",

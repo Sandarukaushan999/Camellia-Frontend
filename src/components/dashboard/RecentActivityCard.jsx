@@ -3,6 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import CardShell from "./primitives/CardShell.jsx";
 import SkeletonBlock from "./primitives/SkeletonBlock.jsx";
 import { dashboardAnimationConfig, withReducedMotion } from "./animationsConfig.js";
+import { formatBusinessTime } from "../../utils/timezone.js";
 
 function paymentChipClasses(paymentMethod) {
   const method = String(paymentMethod || "").toUpperCase();
@@ -25,7 +26,7 @@ function formatTime(createdAt) {
     return "--";
   }
 
-  return date.toLocaleTimeString("en-US", {
+  return formatBusinessTime(date, {
     hour: "2-digit",
     minute: "2-digit",
   });

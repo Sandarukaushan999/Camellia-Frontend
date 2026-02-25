@@ -13,6 +13,8 @@ import Inventory from "./pages/Inventory.jsx";
 import CRM from "./pages/CRM.jsx";
 import Expenses from "./pages/Expenses.jsx";
 import UserManagement from "./pages/UserManagement.jsx";
+import QRCategory from "./pages/QRCategory.jsx";
+import PublicMenu from "./pages/PublicMenu.jsx";
 import MainLayout from "./layout/MainLayout.jsx";
 import { getDefaultRoute } from "./utils/accessControl.js";
 
@@ -68,6 +70,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/menu" element={<PublicMenu />} />
+      <Route path="/menu/:branchCode" element={<PublicMenu />} />
 
       <Route
         path="/"
@@ -171,6 +175,14 @@ export default function App() {
           element={
             <ProtectedRoute roles={["ADMIN"]} permissions={["settings.view"]}>
               <Settings />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="qr-category"
+          element={
+            <ProtectedRoute roles={["ADMIN"]} permissions={["products.view"]}>
+              <QRCategory />
             </ProtectedRoute>
           }
         />

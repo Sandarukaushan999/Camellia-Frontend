@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import api from "../utils/api.js";
 import { getActiveBranchId, onActiveBranchChange } from "../utils/branchContext.js";
+import { formatBusinessDateTime } from "../utils/timezone.js";
 
 const PRESET_EXPENSE_CATEGORIES = [
   "Utilities",
@@ -45,11 +46,7 @@ function normalizeCategory(value) {
 }
 
 function formatDateTime(value) {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return "-";
-  }
-  return parsed.toLocaleString("en-US", {
+  return formatBusinessDateTime(value, {
     year: "numeric",
     month: "short",
     day: "2-digit",
