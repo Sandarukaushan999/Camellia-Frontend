@@ -606,7 +606,7 @@ export default function DashboardPage() {
               {periodMeta.label} overview: sales, orders, inventory alerts, and quick actions
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="cv-dashboard-header-actions flex flex-wrap items-center gap-2">
             <div
               className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1"
               role="group"

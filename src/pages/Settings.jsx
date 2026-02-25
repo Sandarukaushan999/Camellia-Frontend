@@ -293,9 +293,9 @@ export default function Settings() {
           <p className="cv-page-subtitle text-sm text-gray-600 mt-1">Configure your POS system</p>
         </div>
 
-        <div className="flex flex-col lg:flex-row gap-6">
+        <div className="cv-settings-layout flex flex-col lg:flex-row gap-6">
           {/* Sidebar - Section Selector */}
-          <div className="lg:w-64 flex-shrink-0">
+          <div className="cv-settings-sidebar lg:w-64 flex-shrink-0">
             <div className="cv-settings-nav bg-white rounded-xl shadow-md border border-gray-200 p-2">
               {SETTINGS_SECTIONS.map((section) => (
                 <button
@@ -315,7 +315,7 @@ export default function Settings() {
           </div>
 
           {/* Main Content */}
-          <div className="flex-1">
+          <div className="cv-settings-panel flex-1">
             {/* Shop & Branch Info */}
             {activeSection === "shop" && (
               <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">

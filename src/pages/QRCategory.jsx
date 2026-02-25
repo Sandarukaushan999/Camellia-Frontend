@@ -392,7 +392,7 @@ export default function QRCategory() {
                   Up to 100 cards per range
                 </span>
               </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <div className="cv-qr-table-grid grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {tableMenuLinks.map((entry) => (
                   <article
                     key={entry.tableLabel}

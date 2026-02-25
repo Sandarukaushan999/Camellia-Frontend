@@ -1002,7 +1002,7 @@ export default function POS() {
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col xl:flex-row overflow-hidden min-h-0 gap-3">
+      <div className="cv-pos-main flex-1 flex flex-col xl:flex-row overflow-hidden min-h-0 gap-3">
         {/* Left Side - Product Selection */}
         <div className="cv-pos-catalog flex-1 min-h-0 flex flex-col bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
           {/* Category Bar - Enhanced */}
@@ -1030,7 +1030,7 @@ export default function POS() {
           </div>
 
           {/* Product Grid */}
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="cv-pos-products-scroll flex-1 overflow-y-auto p-4">
             <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3 ${systemPrefs.touchMode ? "gap-4" : ""}`}>
               {filteredProducts.map((product) => (
                 <div

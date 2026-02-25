@@ -356,7 +356,7 @@ export default function Inventory() {
   return (
     <div className="cv-page cv-page--inventory p-4 md:p-6">
       <div className="max-w-7xl mx-auto">
-        <div className="cv-page-header flex items-center justify-between mb-6">
+        <div className="cv-page-header cv-inventory-header flex items-center justify-between mb-6">
           <div>
             <h1 className="cv-page-title text-3xl font-bold text-gray-900">Inventory Management</h1>
             <p className="cv-page-subtitle text-sm text-gray-600 mt-1">
@@ -365,7 +365,7 @@ export default function Inventory() {
           </div>
           <button
             onClick={openAddModal}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow-md flex items-center gap-2"
+            className="cv-inventory-add-btn px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow-md flex items-center gap-2"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -374,8 +374,8 @@ export default function Inventory() {
           </button>
         </div>
 
-        <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">
-          <div className="overflow-x-auto">
+        <div className="cv-table-card bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">
+          <div className="cv-table-wrap overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead className="bg-gray-100 text-gray-700">
                 <tr>
@@ -513,7 +513,7 @@ export default function Inventory() {
         </div>
 
         {/* Stats */}
-        <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="cv-inventory-stats-grid mt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white rounded-lg shadow-md p-4 border border-gray-200">
             <div className="text-sm text-gray-600 mb-1">Total Items</div>
             <div className="text-2xl font-bold text-gray-900">{inventoryItems.length}</div>
@@ -545,7 +545,7 @@ export default function Inventory() {
           </div>
         </div>
 
-        <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="cv-inventory-supply-grid mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="cv-inventory-supply-card bg-white rounded-xl shadow-md border border-gray-200 p-4">
             <div className="flex items-center justify-between mb-3">
               <div>

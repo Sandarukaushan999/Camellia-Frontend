@@ -130,7 +130,7 @@ export default function Sales() {
           </button>
         </div>
 
-        <div className="bg-white border border-gray-200 rounded-xl p-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="cv-sales-filter-bar bg-white border border-gray-200 rounded-xl p-4 grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
             <label className="block text-xs font-semibold tracking-wide text-gray-600 uppercase mb-2">
               Range
@@ -181,7 +181,7 @@ export default function Sales() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        <div className="cv-sales-summary-grid grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           <div className="cv-sales-summary-card cv-sales-summary-card--invoices">
             <div className="cv-sales-summary-label">Invoices</div>
             <div className="cv-sales-summary-value">{summary.invoiceCount}</div>
@@ -200,7 +200,7 @@ export default function Sales() {
           </div>
         </div>
 
-        <div className="bg-white border border-gray-200 rounded-xl overflow-auto">
+        <div className="cv-table-card cv-table-wrap bg-white border border-gray-200 rounded-xl overflow-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50">
               <tr>

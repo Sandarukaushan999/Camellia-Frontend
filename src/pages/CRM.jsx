@@ -850,7 +850,7 @@ export default function CRM() {
           <p className="cv-page-subtitle text-sm text-gray-600">Customer 360, segments, campaigns, loyalty analytics</p>
         </div>
 
-        <div className="bg-white border rounded-xl p-2 flex flex-wrap gap-2">
+        <div className="cv-crm-tabs bg-white border rounded-xl p-2 flex flex-wrap gap-2">
           {TABS.map((tab) => (
             <button
               key={tab}
@@ -869,7 +869,7 @@ export default function CRM() {
                 <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search customers..." className="w-full px-3 py-2 border rounded-lg text-sm" />
                 <button onClick={resetCustomerEditor} className="w-full px-3 py-2 bg-gray-100 rounded text-sm">New Customer</button>
               </div>
-              <div className="max-h-[620px] overflow-y-auto divide-y">
+              <div className="cv-crm-customer-list max-h-[620px] overflow-y-auto divide-y">
                 {customers.map((c) => (
                   <button key={c.id} onClick={() => loadCustomerDetail(c.id)} className={`w-full text-left p-3 hover:bg-gray-50 ${selectedCustomerId === c.id ? "bg-blue-50" : ""}`}>
                     <div className="font-semibold">{c.full_name}</div>
@@ -1077,7 +1077,7 @@ export default function CRM() {
                   </select>
                 </div>
               </div>
-              <div className="bg-white border rounded-xl overflow-auto">
+              <div className="cv-table-card cv-table-wrap bg-white border rounded-xl overflow-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50"><tr><th className="px-3 py-2 text-left">Customer</th><th className="px-3 py-2 text-left">Phone</th><th className="px-3 py-2 text-left">Orders</th><th className="px-3 py-2 text-left">Spent</th><th className="px-3 py-2 text-left">Segment</th></tr></thead>
                   <tbody>{segments.map((s) => <tr key={s.id} className="border-t"><td className="px-3 py-2">{s.full_name}</td><td className="px-3 py-2">{s.phone}</td><td className="px-3 py-2">{s.total_orders || 0}</td><td className="px-3 py-2">{money(s.total_spent)}</td><td className="px-3 py-2">{s.segment}</td></tr>)}</tbody>
@@ -1218,7 +1218,7 @@ export default function CRM() {
                 <div className="bg-white border rounded-lg p-3"><div className="text-xs text-gray-500">Avg Order Value</div><div className="text-xl font-bold">{money(retention.summary.avg_order_value)}</div></div>
               </div>
             )}
-            <div className="bg-white border rounded-xl overflow-auto">
+            <div className="cv-table-card cv-table-wrap bg-white border rounded-xl overflow-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50"><tr><th className="px-3 py-2 text-left">Customer</th><th className="px-3 py-2 text-left">Phone</th><th className="px-3 py-2 text-left">Points</th><th className="px-3 py-2 text-left">Orders</th><th className="px-3 py-2 text-left">Spent</th></tr></thead>
                 <tbody>{topLoyalty.map((c) => <tr key={c.id} className="border-t"><td className="px-3 py-2">{c.full_name}</td><td className="px-3 py-2">{c.phone}</td><td className="px-3 py-2">{c.loyalty_points || 0}</td><td className="px-3 py-2">{c.total_orders || 0}</td><td className="px-3 py-2">{money(c.total_spent)}</td></tr>)}</tbody>
@@ -1265,7 +1265,7 @@ export default function CRM() {
                     <option value="ALL">ALL</option><option value="OPEN">OPEN</option><option value="IN_PROGRESS">IN_PROGRESS</option><option value="COMPLETED">COMPLETED</option><option value="CANCELLED">CANCELLED</option>
                   </select>
                 </div>
-                <div className="max-h-[420px] overflow-auto">
+                <div className="cv-table-wrap max-h-[420px] overflow-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50"><tr><th className="px-3 py-2 text-left">Customer</th><th className="px-3 py-2 text-left">Title</th><th className="px-3 py-2 text-left">Status</th><th className="px-3 py-2 text-left">Due</th><th className="px-3 py-2 text-left">Actions</th></tr></thead>
                     <tbody>
@@ -1290,7 +1290,7 @@ export default function CRM() {
             </div>
             <div className="bg-white border rounded-xl p-4">
               <div className="font-semibold mb-2">Followup Suggestions (30+ days inactive)</div>
-              <div className="overflow-auto">
+              <div className="cv-table-wrap overflow-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50"><tr><th className="px-3 py-2 text-left">Customer</th><th className="px-3 py-2 text-left">Phone</th><th className="px-3 py-2 text-left">Last Order</th><th className="px-3 py-2 text-left">Action</th></tr></thead>
                   <tbody>

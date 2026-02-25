@@ -828,7 +828,7 @@ export default function Products() {
                 : "No branch selected"}
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="cv-products-header-actions flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={openOverrideMatrixModal}
@@ -857,7 +857,7 @@ export default function Products() {
         </div>
 
         {/* Filters */}
-        <div className="bg-white rounded-xl shadow-md p-4 mb-6 border border-gray-200">
+        <div className="cv-products-filter-bar bg-white rounded-xl shadow-md p-4 mb-6 border border-gray-200">
           <div className="flex flex-col md:flex-row gap-4">
             {/* Search */}
             <div className="flex-1">
@@ -904,8 +904,8 @@ export default function Products() {
         </div>
 
         {/* Products Table */}
-        <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">
-          <div className="overflow-x-auto">
+        <div className="cv-table-card bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">
+          <div className="cv-table-wrap overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
@@ -1052,7 +1052,7 @@ export default function Products() {
         </div>
 
         {/* Stats */}
-        <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="cv-products-stats-grid mt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white rounded-lg shadow-md p-4 border border-gray-200">
             <div className="text-sm text-gray-600 mb-1">Total Products</div>
             <div className="text-2xl font-bold text-gray-900">{products.length}</div>

@@ -267,7 +267,7 @@ export default function Reports() {
             <h1 className="cv-page-title text-2xl font-bold text-gray-900">Reports</h1>
             <p className="cv-page-subtitle text-sm text-gray-600 mt-1">Live operational and financial reporting</p>
           </div>
-          <div className="flex gap-2">
+          <div className="cv-reports-header-actions flex gap-2">
             <button
               onClick={queueExportJob}
               className="cv-acid-btn px-3 py-2 rounded-lg text-sm font-semibold"
@@ -373,7 +373,7 @@ export default function Reports() {
                   </div>
                 </div>
 
-                <div className="bg-white border rounded-xl overflow-auto">
+                <div className="cv-table-card cv-table-wrap bg-white border rounded-xl overflow-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50">
                       <tr>
@@ -454,7 +454,7 @@ export default function Reports() {
                   </div>
                 </div>
 
-                <div className="bg-white border rounded-xl overflow-auto">
+                <div className="cv-table-card cv-table-wrap bg-white border rounded-xl overflow-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50">
                       <tr>
@@ -555,7 +555,7 @@ export default function Reports() {
                     </div>
                   </div>
                 </div>
-                <div className="bg-white border rounded-xl overflow-auto">
+                <div className="cv-table-card cv-table-wrap bg-white border rounded-xl overflow-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50">
                       <tr>
@@ -596,7 +596,7 @@ export default function Reports() {
                     </div>
                   ))}
                 </div>
-                <div className="bg-white border rounded-xl overflow-auto">
+                <div className="cv-table-card cv-table-wrap bg-white border rounded-xl overflow-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50">
                       <tr>
@@ -634,7 +634,7 @@ export default function Reports() {
             )}
 
             {activeReport === "exports" && (
-              <div className="bg-white border rounded-xl overflow-auto">
+              <div className="cv-table-card cv-table-wrap bg-white border rounded-xl overflow-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50">
                     <tr>

@@ -249,7 +249,7 @@ export default function Orders() {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="cv-orders-summary-grid grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="cv-order-summary-card cv-order-summary-card--count">
             <div className="cv-order-summary-label">Pending QR Orders</div>
             <div className="cv-order-summary-value">{summary.totalOrders}</div>
@@ -264,7 +264,7 @@ export default function Orders() {
           </div>
         </div>
 
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
+        <div className="cv-orders-search-card bg-white border border-gray-200 rounded-xl p-4">
           <label className="block text-xs font-semibold tracking-wide text-gray-600 uppercase mb-2">
             Search Order
           </label>

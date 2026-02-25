@@ -330,7 +330,7 @@ export default function UserManagement() {
           </button>
         </div>
 
-        <div className="bg-white border border-gray-200 rounded-xl p-2 inline-flex gap-2">
+        <div className="cv-users-tabs bg-white border border-gray-200 rounded-xl p-2 inline-flex gap-2">
           <button type="button" onClick={() => setTab("users")} className={`px-4 py-2 rounded-lg text-sm font-semibold ${tab === "users" ? "cv-acid-btn" : "bg-gray-100 text-gray-700"}`}>
             Users
           </button>
@@ -395,7 +395,7 @@ export default function UserManagement() {
               </form>
             </section>
 
-            <section className="bg-white border border-gray-200 rounded-xl overflow-auto">
+            <section className="cv-table-card cv-table-wrap bg-white border border-gray-200 rounded-xl overflow-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
@@ -560,7 +560,7 @@ export default function UserManagement() {
               </form>
             </section>
 
-            <section className="bg-white border border-gray-200 rounded-xl overflow-auto">
+            <section className="cv-table-card cv-table-wrap bg-white border border-gray-200 rounded-xl overflow-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
