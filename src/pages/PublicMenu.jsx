@@ -40,11 +40,6 @@ function getViewportSnapshot() {
   return { width: window.innerWidth, height: window.innerHeight };
 }
 
-function isInteractiveTarget(target) {
-  if (!(target instanceof Element)) return false;
-  return Boolean(target.closest("input, textarea, select, button, a, label"));
-}
-
 const DEFAULT_ORDER_FORM = {
   customer_name: "",
   customer_phone: "",
@@ -363,13 +358,6 @@ export default function PublicMenu() {
   const [activeStep, setActiveStep] = useState("cover");
   const [viewport, setViewport] = useState(getViewportSnapshot);
   const flipBookRef = useRef(null);
-  const touchGestureRef = useRef({
-    active: false,
-    startX: 0,
-    startY: 0,
-    startTime: 0,
-    ignore: false,
-  });
 
   const detectedTable = useMemo(() => getDetectedTable(location.search), [location.search]);
 
@@ -459,6 +447,7 @@ export default function PublicMenu() {
 
   const maxStepIndex = orderSuccess ? STEP_INDEX.thanks : STEP_INDEX.cart;
   const activeStepIndex = STEP_INDEX[activeStep] ?? 0;
+  const isCategoryStep = activeStep.startsWith("category:");
   const isMobileViewport = viewport.width <= 920;
   const flipBookWidth = useMemo(() => {
     if (isMobileViewport) {
@@ -472,6 +461,8 @@ export default function PublicMenu() {
     }
     return Math.max(660, Math.min(900, Math.round(viewport.height * 0.82)));
   }, [isMobileViewport, viewport.height]);
+  const totalVisiblePages = maxStepIndex + 1;
+  const currentVisiblePage = Math.min(totalVisiblePages, Math.max(1, activeStepIndex + 1));
 
   const getFlipApi = () => {
     try {
@@ -511,38 +502,6 @@ export default function PublicMenu() {
       return;
     }
     setActiveStep(STEP_KEYS[activeStepIndex + 1]);
-  };
-
-  const handleBookTouchStart = (event) => {
-    const touch = event.touches?.[0];
-    if (!touch) return;
-    touchGestureRef.current = {
-      active: true,
-      startX: touch.clientX,
-      startY: touch.clientY,
-      startTime: Date.now(),
-      ignore: isInteractiveTarget(event.target),
-    };
-  };
-
-  const handleBookTouchEnd = (event) => {
-    const state = touchGestureRef.current;
-    touchGestureRef.current.active = false;
-    if (!state.active || state.ignore) return;
-    const touch = event.changedTouches?.[0];
-    if (!touch) return;
-    const deltaX = touch.clientX - state.startX;
-    const deltaY = touch.clientY - state.startY;
-    const absX = Math.abs(deltaX);
-    const absY = Math.abs(deltaY);
-    const elapsedMs = Date.now() - state.startTime;
-    if (elapsedMs > 900) return;
-    if (absX < 34 || absX < absY * 1.2) return;
-    if (deltaX > 0) {
-      goPrev();
-    } else {
-      goNext();
-    }
   };
 
   const handlePageFlip = (event) => {
@@ -629,13 +588,8 @@ export default function PublicMenu() {
       <div className="cv-public-menu-bg" />
       <div className="cv-public-book-stage relative mx-auto max-w-7xl p-3 md:p-5">
         <div className="cv-public-book-root">
-          <div
-            className="cv-public-book-frame"
-            onTouchStart={handleBookTouchStart}
-            onTouchEnd={handleBookTouchEnd}
-          >
+          <div className="cv-public-book-frame">
             <div className="cv-public-book-spine" />
-            <div className="cv-public-book-peek" aria-hidden="true" />
             <HTMLFlipBook
               ref={flipBookRef}
               className="cv-public-flipbook"
@@ -648,7 +602,7 @@ export default function PublicMenu() {
               showCover
               showPageCorners
               mobileScrollSupport
-              disableFlipByClick={!isMobileViewport}
+              disableFlipByClick
               useMouseEvents
               swipeDistance={isMobileViewport ? 34 : 62}
               flippingTime={isMobileViewport ? 760 : 920}
@@ -871,22 +825,61 @@ export default function PublicMenu() {
         </div>
 
         <div className="cv-public-book-controls cv-public-book-controls--wide">
-          <button
-            type="button"
-            onClick={goPrev}
-            className="cv-public-book-nav-btn cv-public-book-nav-btn--arrow"
-            disabled={activeStepIndex <= STEP_INDEX.cover}
-          >
-            Previous
-          </button>
-          <button
-            type="button"
-            onClick={goNext}
-            className="cv-public-book-nav-btn cv-public-book-nav-btn--arrow"
-            disabled={activeStepIndex >= maxStepIndex}
-          >
-            Next
-          </button>
+          <div className="cv-public-book-meta">
+            <span className="cv-public-book-page-pill">
+              Page {currentVisiblePage} / {totalVisiblePages}
+            </span>
+            <span className="cv-public-book-hint">Swipe page edges or use buttons</span>
+          </div>
+          <div className="cv-public-book-nav-group">
+            <button
+              type="button"
+              onClick={() => goToStep("cover")}
+              className={`cv-public-book-nav-btn ${activeStep === "cover" ? "is-active" : ""}`}
+            >
+              Cover
+            </button>
+            <button
+              type="button"
+              onClick={() => goToStep(FIRST_CATEGORY_STEP)}
+              className={`cv-public-book-nav-btn ${isCategoryStep ? "is-active" : ""}`}
+            >
+              Categories
+            </button>
+            <button
+              type="button"
+              onClick={() => goToStep("cart")}
+              className={`cv-public-book-nav-btn ${activeStep === "cart" ? "is-active" : ""}`}
+            >
+              Cart
+            </button>
+            <button
+              type="button"
+              onClick={() => goToStep("thanks")}
+              className={`cv-public-book-nav-btn ${activeStep === "thanks" ? "is-active" : ""}`}
+              disabled={!orderSuccess}
+            >
+              Thank You
+            </button>
+          </div>
+          <div className="cv-public-book-arrows">
+            <button
+              type="button"
+              onClick={goPrev}
+              className="cv-public-book-nav-btn cv-public-book-nav-btn--arrow"
+              disabled={activeStepIndex <= STEP_INDEX.cover}
+            >
+              Prev
+            </button>
+            <button
+              type="button"
+              onClick={goNext}
+              className="cv-public-book-nav-btn cv-public-book-nav-btn--arrow"
+              disabled={activeStepIndex >= maxStepIndex}
+            >
+              Next
+            </button>
+          </div>
         </div>
 
         {message && (

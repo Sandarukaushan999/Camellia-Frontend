@@ -2099,12 +2099,9 @@ body {
 }
 
 @media (max-width: 880px) {
-  .cv-public-category-grid {
-    grid-template-columns: 1fr;
-  }
-
+  .cv-public-category-grid,
   .cv-public-category-items-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
   }
 
   .cv-public-order-stack {
@@ -2181,7 +2178,7 @@ body {
   }
 
   .cv-public-book-nav-btn {
-    flex: 1 1 calc(50% - 0.4rem);
+    flex: 1 1 calc(33% - 0.4rem);
     min-width: 70px;
     padding: 0.36rem 0.55rem;
   }
@@ -2261,13 +2258,7 @@ body {
   z-index: 3;
 }
 
-.cv-public-book-peek {
-  display: none;
-}
-
 .cv-public-flipbook {
-  position: relative;
-  z-index: 2;
   filter: drop-shadow(0 20px 24px rgba(0, 0, 0, 0.42));
 }
 
@@ -2385,11 +2376,7 @@ body {
 }
 
 .cv-public-book-controls {
-  width: min(100%, 560px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
+  width: min(100%, 840px);
   margin: 0.95rem auto 0;
   border-radius: 1rem;
   border-color: rgba(160, 130, 98, 0.44);
@@ -2402,10 +2389,47 @@ body {
   z-index: 25;
 }
 
+.cv-public-book-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 0.6rem;
+  margin-bottom: 0.32rem;
+}
+
+.cv-public-book-page-pill {
+  border-radius: 999px;
+  padding: 0.24rem 0.58rem;
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: #ffeecf;
+  background: rgba(255, 240, 208, 0.14);
+  border: 1px solid rgba(255, 231, 185, 0.32);
+}
+
+.cv-public-book-hint {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: rgba(255, 238, 205, 0.86);
+}
+
+.cv-public-book-nav-group {
+  display: flex;
+  flex: 1 1 auto;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.cv-public-book-arrows {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
 .cv-public-book-nav-btn {
-  min-width: 0;
-  flex: 1 1 0;
-  max-width: 240px;
+  min-width: 90px;
   color: #fff4e0;
   border-color: rgba(255, 229, 181, 0.2);
   background: rgba(255, 239, 208, 0.08);
@@ -2421,7 +2445,7 @@ body {
 }
 
 .cv-public-book-nav-btn--arrow {
-  min-width: 0;
+  min-width: 72px;
 }
 
 .cv-public-flip-page--cart form,
@@ -2447,10 +2471,8 @@ body {
 
   .cv-public-book-frame {
     width: 100%;
-    padding: 0.5rem 0.5rem 0.5rem 0.7rem;
+    padding: 0.52rem;
     border-radius: 1rem;
-    display: flex;
-    justify-content: flex-end;
   }
 
   .cv-public-book-frame::after {
@@ -2458,41 +2480,17 @@ body {
   }
 
   .cv-public-book-spine {
-    left: 0.44rem;
-    transform: none;
-    width: 0.42rem;
+    width: 0.58rem;
     top: 0.58rem;
     bottom: 0.58rem;
-    z-index: 2;
   }
 
-  .cv-public-book-peek {
-    display: block;
-    position: absolute;
-    top: 0.58rem;
-    bottom: 0.58rem;
-    left: 0.72rem;
-    width: 10%;
-    min-width: 24px;
-    max-width: 42px;
-    border-radius: 0.65rem;
-    border: 1px solid rgba(176, 150, 115, 0.44);
-    background:
-      linear-gradient(180deg, rgba(255, 252, 245, 0.9), rgba(247, 236, 219, 0.88)),
-      repeating-linear-gradient(
-        180deg,
-        rgba(146, 117, 82, 0.04) 0,
-        rgba(146, 117, 82, 0.04) 2px,
-        rgba(255, 255, 255, 0) 2px,
-        rgba(255, 255, 255, 0) 5px
-      );
-    box-shadow: inset -6px 0 10px rgba(120, 88, 57, 0.18);
-    pointer-events: none;
-    z-index: 1;
+  .cv-public-book-hint {
+    display: none;
   }
 
-  .cv-public-book-controls {
-    width: min(100%, 460px);
+  .cv-public-book-nav-group {
+    justify-content: flex-start;
   }
 }
 
@@ -2503,14 +2501,22 @@ body {
     gap: 0.42rem;
   }
 
+  .cv-public-book-meta {
+    margin-bottom: 0;
+  }
+
+  .cv-public-book-nav-group {
+    width: 100%;
+  }
+
+  .cv-public-book-arrows {
+    width: 100%;
+    justify-content: space-between;
+  }
+
   .cv-public-book-nav-btn {
     flex: 1 1 calc(50% - 0.35rem);
     min-width: 0;
-  }
-
-  .cv-public-book-peek {
-    width: 11%;
-    min-width: 22px;
   }
 }
 
