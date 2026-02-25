@@ -1,0 +1,124 @@
+import React from "react";
+import { motion, useReducedMotion } from "motion/react";
+import { dashboardAnimationConfig, withReducedMotion } from "./animationsConfig.js";
+import CountUpNumber from "./primitives/CountUpNumber.jsx";
+import SkeletonBlock from "./primitives/SkeletonBlock.jsx";
+
+const iconMap = {
+  sales: "fi-rr-chart-line-up",
+  orders: "fi-rr-clipboard-list",
+  avg: "fi-rr-calculator",
+  profit: "fi-rr-wallet",
+  active: "fi-rr-bolt",
+};
+
+function TrendPill({ trend }) {
+  const trendValue = Number(trend || 0);
+  const isUp = trendValue >= 0;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: -6 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{
+        duration: dashboardAnimationConfig.duration.fast,
+        ease: dashboardAnimationConfig.ease.enter,
+      }}
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+        isUp ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"
+      }`}
+    >
+      <svg
+        className={`h-3 w-3 ${isUp ? "" : "rotate-180"}`}
+        viewBox="0 0 16 16"
+        fill="currentColor"
+        aria-hidden="true"
+      >
+        <path d="M8 3l4 5H9v5H7V8H4l4-5z" />
+      </svg>
+      <span>{Math.abs(trendValue).toFixed(1)}%</span>
+    </motion.div>
+  );
+}
+
+function KpiSkeleton() {
+  return (
+    <article className="cv-kpi-card cv-kpi-skeleton h-full min-h-[162px] rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm md:p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <SkeletonBlock className="h-9 w-9 rounded-lg" />
+        <SkeletonBlock className="h-5 w-14 rounded-full" />
+      </div>
+      <SkeletonBlock className="mb-2 h-3 w-24" />
+      <SkeletonBlock className="mb-2 h-8 w-32" />
+      <SkeletonBlock className="h-3 w-20" />
+    </article>
+  );
+}
+
+export default function KpiCards({ kpis, loading, formatCurrency }) {
+  const reducedMotion = useReducedMotion();
+
+  if (loading) {
+    return (
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        {Array.from({ length: 5 }).map((_, index) => (
+          <KpiSkeleton key={`kpi-skeleton-${index}`} />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      {kpis.map((kpi) => (
+        <motion.article
+          key={kpi.id}
+          whileHover={
+            reducedMotion
+              ? {}
+              : {
+                  y: -3,
+                  boxShadow: "0 18px 35px -26px rgba(37, 99, 235, 0.55)",
+                }
+          }
+          transition={withReducedMotion(reducedMotion, {
+            duration: dashboardAnimationConfig.duration.fast,
+            ease: dashboardAnimationConfig.ease.standard,
+          })}
+          className={`cv-kpi-card cv-kpi-card--${kpi.id} group relative h-full min-h-[162px] overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm md:p-5`}
+        >
+          <div
+            className={`absolute -right-10 -top-10 h-24 w-24 rounded-full bg-gradient-to-br opacity-0 blur-2xl transition-opacity duration-200 group-hover:opacity-100 ${
+              kpi.glowClass || "from-blue-200 to-blue-50"
+            }`}
+          />
+          <div className="relative z-10">
+            <div className="mb-3 flex items-center justify-between">
+              <div
+                className={`inline-flex h-9 w-9 items-center justify-center rounded-lg ${
+                  kpi.iconBgClass || "bg-blue-100"
+                } ${kpi.iconClass || "text-blue-600"}`}
+              >
+                <span className="cv-dashboard-icon-inline">
+                  <i className={iconMap[kpi.id] || "fi-rr-chart-line-up"} aria-hidden="true" />
+                </span>
+              </div>
+              <TrendPill trend={kpi.trend} />
+            </div>
+            <p className="mb-1 text-xs font-medium text-slate-500">{kpi.label}</p>
+            <CountUpNumber
+              value={kpi.value}
+              className="block text-xl font-bold tracking-tight text-slate-900"
+              formatValue={(latest) =>
+                kpi.valueType === "currency"
+                  ? formatCurrency(latest)
+                  : Math.round(latest).toLocaleString("en-US")
+              }
+            />
+            <p className="mt-1 text-xs text-slate-500">{kpi.caption}</p>
+          </div>
+        </motion.article>
+      ))}
+    </div>
+  );
+}
