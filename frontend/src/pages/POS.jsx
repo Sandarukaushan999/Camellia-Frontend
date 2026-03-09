@@ -10,6 +10,8 @@ const CATEGORY_ICONS = {
   ALL: "📦",
   Burger: "🍔",
   Kottu: "🍜",
+  Noodles: "🍝",
+  Noodle: "🍝",
   Submarine: "🥖",
   Café: "☕",
   Juice: "🥤",
@@ -21,6 +23,7 @@ const DEFAULT_CATEGORIES = [
   "ALL",
   "Burger",
   "Kottu",
+  "Noodles",
   "Submarine",
   "Café",
   "Juice",
@@ -32,13 +35,19 @@ const DEFAULT_CATEGORIES = [
 const DEFAULT_PRINTER_SETTINGS = {
   autoPrint: true,
   printMode: "ESC_POS_TCP",
-  model: "XPrinter XP-K200L",
+  model: "XPrinter XP-80T",
   host: "",
   port: 9100,
   paperSize: "80mm",
-  charsPerLine: 48,
+  charsPerLine: 42,
   timeoutMs: 4000,
 };
+const XP_80T_PRINT_PROFILE = {
+  model: "XPrinter XP-80T",
+  paperSize: "80mm",
+  charsPerLine: 42,
+};
+const PORTION_OPTIONS = Object.freeze(["SMALL", "LARGE"]);
 const POS_RECALL_STORAGE_KEY = "cv_pos_recall_held_order";
 const DEFAULT_SETTLEMENT_CONTEXT = {
   heldOrderId: null,
@@ -46,6 +55,83 @@ const DEFAULT_SETTLEMENT_CONTEXT = {
   reference: "",
   note: "",
 };
+
+function toSafeMoney(value, fallback = 0) {
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return parsed;
+}
+
+function normalizePortion(value) {
+  const normalized = String(value || "")
+    .trim()
+    .toUpperCase();
+  return PORTION_OPTIONS.includes(normalized) ? normalized : null;
+}
+
+function getPortionLabel(portion) {
+  return normalizePortion(portion) === "LARGE" ? "Large" : "Small";
+}
+
+function hasPortionPrices(product) {
+  if (product?.has_portions === true) {
+    return true;
+  }
+  const smallPrice = toSafeMoney(
+    product?.small_price ??
+      product?.smallPrice ??
+      product?.portion_prices?.small ??
+      product?.portions?.small,
+    NaN
+  );
+  const largePrice = toSafeMoney(
+    product?.large_price ??
+      product?.largePrice ??
+      product?.portion_prices?.large ??
+      product?.portions?.large,
+    NaN
+  );
+  const hasSmall = Number.isFinite(smallPrice) && smallPrice > 0;
+  const hasLarge = Number.isFinite(largePrice) && largePrice > 0;
+  return hasSmall || hasLarge;
+}
+
+function resolvePortionPrice(product, portion) {
+  const normalizedPortion = normalizePortion(portion);
+  const smallPrice = toSafeMoney(
+    product?.small_price ??
+      product?.smallPrice ??
+      product?.portion_prices?.small ??
+      product?.portions?.small,
+    NaN
+  );
+  const largePrice = toSafeMoney(
+    product?.large_price ??
+      product?.largePrice ??
+      product?.portion_prices?.large ??
+      product?.portions?.large,
+    NaN
+  );
+  const fallbackPrice = toSafeMoney(product?.price, 0);
+  if (!normalizedPortion) {
+    return fallbackPrice;
+  }
+  if (!hasPortionPrices(product)) {
+    return fallbackPrice;
+  }
+  if (normalizedPortion === "SMALL") {
+    if (Number.isFinite(smallPrice) && smallPrice > 0) {
+      return smallPrice;
+    }
+    return Number.isFinite(largePrice) && largePrice > 0 ? largePrice : fallbackPrice;
+  }
+  if (Number.isFinite(largePrice) && largePrice > 0) {
+    return largePrice;
+  }
+  return Number.isFinite(smallPrice) && smallPrice > 0 ? smallPrice : fallbackPrice;
+}
 
 function loadShopInfoFromStorage() {
   const fallback = {
@@ -67,17 +153,33 @@ function loadShopInfoFromStorage() {
   return fallback;
 }
 
+function resolveDirectPrinterConfig(settings) {
+  return {
+    model: XP_80T_PRINT_PROFILE.model,
+    host: String(settings?.host || "").trim(),
+    port: Number(settings?.port) || 9100,
+    paperSize: XP_80T_PRINT_PROFILE.paperSize,
+    charsPerLine: XP_80T_PRINT_PROFILE.charsPerLine,
+    timeoutMs: Number(settings?.timeoutMs) || 4000,
+  };
+}
+
 export default function POS() {
   const { user } = useAuth();
   const [activeBranchId, setActiveBranchId] = useState(() => getActiveBranchId(null));
   const [products, setProducts] = useState([]);
   const [cart, setCart] = useState([]);
+  const [portionPicker, setPortionPicker] = useState({
+    open: false,
+    product: null,
+  });
   const [selectedCategory, setSelectedCategory] = useState("ALL");
   const [orderType, setOrderType] = useState("DINE-IN");
   const [tableNumber, setTableNumber] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("CASH");
+  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
   const [cashGiven, setCashGiven] = useState("");
   const [orderId, setOrderId] = useState(null);
   const [heldOrders, setHeldOrders] = useState([]);
@@ -383,29 +485,65 @@ export default function POS() {
     }
   };
 
-  // Add to cart or increase quantity
-  const addToCart = (product) => {
+  const buildCartItem = (product, portion = null) => {
+    const normalizedPortion = normalizePortion(portion);
+    const baseName = String(product?.name || "").trim() || "Item";
+    const displayName = normalizedPortion
+      ? `${baseName} (${getPortionLabel(normalizedPortion)})`
+      : baseName;
+    return {
+      ...product,
+      id: product?.id,
+      name: baseName,
+      displayName,
+      portion: normalizedPortion,
+      cartKey: `${String(product?.id || "")}::${normalizedPortion || "DEFAULT"}`,
+      price: resolvePortionPrice(product, normalizedPortion),
+      qty: 1,
+    };
+  };
+
+  const closePortionPicker = () => {
+    setPortionPicker({
+      open: false,
+      product: null,
+    });
+  };
+
+  const addToCart = (product, { portion = null } = {}) => {
+    const cartItem = buildCartItem(product, portion);
     setCart((prev) => {
-      const existing = prev.find((p) => p.id === product.id);
+      const existing = prev.find((line) => line.cartKey === cartItem.cartKey);
       if (existing) {
-        return prev.map((p) =>
-          p.id === product.id ? { ...p, qty: p.qty + 1 } : p
+        return prev.map((line) =>
+          line.cartKey === cartItem.cartKey ? { ...line, qty: line.qty + 1 } : line
         );
       }
-      return [...prev, { ...product, qty: 1 }];
+      return [...prev, cartItem];
     });
-    // Visual feedback
-    setMessage(`${product.name} added`);
+    setMessage(`${cartItem.displayName} added`);
     setTimeout(() => setMessage(""), 1500);
     playAddSound();
   };
 
+  const handleProductTap = (product) => {
+    if (hasPortionPrices(product)) {
+      // Fallback: card tap can still open the portion picker if S/L buttons are missed.
+      setPortionPicker({
+        open: true,
+        product,
+      });
+      return;
+    }
+    addToCart(product);
+  };
+
   // Update quantity
-  const updateQty = (id, delta) => {
+  const updateQty = (cartKey, delta) => {
     setCart((prev) =>
       prev
         .map((p) => {
-          if (p.id === id) {
+          if (p.cartKey === cartKey) {
             const newQty = Math.max(0, p.qty + delta);
             return { ...p, qty: newQty };
           }
@@ -416,8 +554,8 @@ export default function POS() {
   };
 
   // Remove item
-  const removeItem = (id) => {
-    setCart((prev) => prev.filter((p) => p.id !== id));
+  const removeItem = (cartKey) => {
+    setCart((prev) => prev.filter((p) => p.cartKey !== cartKey));
   };
 
   // Load tax & service settings from localStorage (saved in Settings)
@@ -587,6 +725,8 @@ export default function POS() {
         items: cart.map((item) => ({
           product_id: item.id,
           name: item.name,
+          display_name: item.displayName || item.name,
+          portion: item.portion || null,
           qty: item.qty,
           price: item.price,
           category: item.category || null,
@@ -645,7 +785,16 @@ export default function POS() {
     setCart(
       heldItems.map((item) => ({
         id: item.product_id,
-        name: item.name,
+        name: String(item?.name || "").trim() || `Item ${item?.product_id || ""}`,
+        displayName:
+          String(item?.display_name || item?.displayName || "").trim() ||
+          (normalizePortion(item?.portion)
+            ? `${String(item?.name || "").trim() || `Item ${item?.product_id || ""}`} (${getPortionLabel(
+                normalizePortion(item?.portion)
+              )})`
+            : String(item?.name || "").trim() || `Item ${item?.product_id || ""}`),
+        portion: normalizePortion(item?.portion),
+        cartKey: `${String(item?.product_id || "")}::${normalizePortion(item?.portion) || "DEFAULT"}`,
         qty: parseFloat(item.qty) || 1,
         price: parseFloat(item.price) || 0,
         category: item.category || null,
@@ -781,6 +930,10 @@ export default function POS() {
 
   // Execute payment
   const executePayment = async (method, cashAmount = 0) => {
+    if (paymentSubmitting) {
+      return;
+    }
+    setPaymentSubmitting(true);
 
     try {
       const normalizedPhone = normalizePhone(customerPhone);
@@ -808,6 +961,8 @@ export default function POS() {
         items: cart.map((item) => ({
           product_id: item.id,
           name: item.name,
+          display_name: item.displayName || item.name,
+          portion: item.portion || null,
           qty: item.qty,
           price: item.price,
         })),
@@ -834,7 +989,7 @@ export default function POS() {
         note: settlementContext.note || null,
         cashier: user?.username || "System",
         items: cart.map((item) => ({
-          name: item.name,
+          name: item.displayName || item.name,
           qty: item.qty,
           price: item.price,
         })),
@@ -858,14 +1013,17 @@ export default function POS() {
       setShowReceipt(true);
       setMessage(`Invoice ${invoiceNumber} paid successfully`);
 
-      // Auto print with direct ESC/POS when configured, fallback to browser print.
-      if (printerSettings.autoPrint) {
-        setTimeout(async () => {
-          const printed = await printReceipt(receiptInfo, { silent: true });
-          if (!printed) {
-            window.print();
-          }
-        }, 250);
+      // Always print immediately on confirm payment via direct ESC/POS (XP-80T profile).
+      const printed = await printReceipt(receiptInfo, {
+        silent: true,
+        allowBrowserFallback: false,
+        forceDirect: true,
+      });
+      if (!printed) {
+        setMessage(
+          `Invoice ${invoiceNumber} paid. Direct print failed, check printer host/IP and network.`
+        );
+        setTimeout(() => setMessage(""), 4500);
       }
 
       setCart([]);
@@ -882,6 +1040,8 @@ export default function POS() {
     } catch (err) {
       setMessage("Payment failed. Please try again.");
       setTimeout(() => setMessage(""), 3000);
+    } finally {
+      setPaymentSubmitting(false);
     }
   };
 
@@ -896,29 +1056,43 @@ export default function POS() {
   };
 
   const printReceipt = useCallback(
-    async (orderData, { silent = false } = {}) => {
+    async (
+      orderData,
+      { silent = false, allowBrowserFallback = true, forceDirect = false } = {}
+    ) => {
       if (!orderData) return false;
 
-      const printMode = String(printerSettings.printMode || "BROWSER_PRINT").toUpperCase();
+      const printMode = forceDirect
+        ? "ESC_POS_TCP"
+        : String(printerSettings.printMode || "BROWSER_PRINT").toUpperCase();
+      const shouldFallbackToBrowser = allowBrowserFallback !== false;
       if (printMode === "ESC_POS_TCP") {
-        const host = String(printerSettings.host || "").trim();
-        if (!host) {
+        const directPrinter = resolveDirectPrinterConfig(printerSettings);
+        if (!directPrinter.host) {
           if (!silent) {
-            setMessage("Printer host/IP not configured. Falling back to browser print.");
+            setMessage(
+              shouldFallbackToBrowser
+                ? "Printer host/IP not configured. Falling back to browser print."
+                : "Printer host/IP not configured for direct ESC/POS printing."
+            );
             setTimeout(() => setMessage(""), 3500);
           }
-          window.print();
-          return true;
+          if (shouldFallbackToBrowser) {
+            window.print();
+            return true;
+          }
+          return false;
         }
 
         try {
           await api.post("/printing/escpos", {
             printer: {
-              host,
-              port: Number(printerSettings.port) || 9100,
-              paperSize: printerSettings.paperSize || "80mm",
-              charsPerLine: Number(printerSettings.charsPerLine) || 48,
-              timeoutMs: Number(printerSettings.timeoutMs) || 4000,
+              model: directPrinter.model,
+              host: directPrinter.host,
+              port: directPrinter.port,
+              paperSize: directPrinter.paperSize,
+              charsPerLine: directPrinter.charsPerLine,
+              timeoutMs: directPrinter.timeoutMs,
             },
             receipt: {
               ...orderData,
@@ -935,17 +1109,30 @@ export default function POS() {
           if (!silent) {
             setMessage(
               error?.response?.data?.message ||
-                "Direct print failed. Falling back to browser print."
+                (shouldFallbackToBrowser
+                  ? "Direct print failed. Falling back to browser print."
+                  : "Direct print failed. Check printer network settings.")
             );
             setTimeout(() => setMessage(""), 4000);
           }
-          window.print();
-          return true;
+          if (shouldFallbackToBrowser) {
+            window.print();
+            return true;
+          }
+          return false;
         }
       }
 
-      window.print();
-      return true;
+      if (shouldFallbackToBrowser) {
+        window.print();
+        return true;
+      }
+
+      if (!silent) {
+        setMessage("Print mode is not ESC/POS direct.");
+        setTimeout(() => setMessage(""), 3000);
+      }
+      return false;
     },
     [printerSettings]
   );
@@ -1035,7 +1222,7 @@ export default function POS() {
               {filteredProducts.map((product) => (
                 <div
                   key={product.id}
-                  onClick={() => addToCart(product)}
+                  onClick={() => handleProductTap(product)}
                   className={`cv-pos-product-card bg-white border-2 border-gray-200 rounded-lg cursor-pointer hover:border-blue-500 hover:shadow-lg transition-all transform hover:scale-105 active:scale-95 ${
                     systemPrefs.touchMode ? "p-4" : "p-3"
                   }`}
@@ -1058,9 +1245,39 @@ export default function POS() {
                     <div className="font-semibold text-sm text-gray-900 mb-1 line-clamp-2">
                       {product.name}
                     </div>
-                    <div className="text-base font-bold text-blue-600">
-                      {formatCurrency(product.price)}
-                    </div>
+                    {hasPortionPrices(product) ? (
+                      <div className="mt-1">
+                        <div className="mb-1 text-[10px] font-black tracking-wide text-gray-700">
+                          SELECT PORTION
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            addToCart(product, { portion: "SMALL" });
+                          }}
+                          className="rounded-md border-2 border-blue-400 bg-blue-50 px-2 py-2 text-xs font-black text-blue-900 hover:bg-blue-100"
+                        >
+                          S {formatCurrency(resolvePortionPrice(product, "SMALL"))}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            addToCart(product, { portion: "LARGE" });
+                          }}
+                          className="rounded-md border-2 border-emerald-400 bg-emerald-50 px-2 py-2 text-xs font-black text-emerald-900 hover:bg-emerald-100"
+                        >
+                          L {formatCurrency(resolvePortionPrice(product, "LARGE"))}
+                        </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-base font-bold text-blue-600">
+                        {formatCurrency(product.price)}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -1097,7 +1314,7 @@ export default function POS() {
                 <ReceiptPreview
                   orderData={{
                     items: cart.map((item) => ({
-                      name: item.name,
+                      name: item.displayName || item.name,
                       qty: item.qty,
                       price: item.price,
                     })),
@@ -1296,6 +1513,59 @@ export default function POS() {
                 className="px-4 py-2 bg-gray-700 text-white rounded-lg text-sm font-semibold hover:bg-gray-800"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {portionPicker.open && portionPicker.product && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl border border-gray-200 p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-lg font-bold text-gray-900">
+                  Select Portion
+                </div>
+                <div className="text-sm text-gray-600 mt-1">
+                  {portionPicker.product.name}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closePortionPicker}
+                className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+              >
+                {"\u00D7"}
+              </button>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  addToCart(portionPicker.product, { portion: "SMALL" });
+                  closePortionPicker();
+                }}
+                className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-4 text-left hover:bg-blue-100 transition-colors"
+              >
+                <div className="text-sm font-semibold text-blue-900">Small</div>
+                <div className="text-base font-bold text-blue-700 mt-1">
+                  {formatCurrency(resolvePortionPrice(portionPicker.product, "SMALL"))}
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  addToCart(portionPicker.product, { portion: "LARGE" });
+                  closePortionPicker();
+                }}
+                className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-4 text-left hover:bg-emerald-100 transition-colors"
+              >
+                <div className="text-sm font-semibold text-emerald-900">Large</div>
+                <div className="text-base font-bold text-emerald-700 mt-1">
+                  {formatCurrency(resolvePortionPrice(portionPicker.product, "LARGE"))}
+                </div>
               </button>
             </div>
           </div>
@@ -1542,20 +1812,24 @@ export default function POS() {
               {/* Confirm Button */}
               <button
                 onClick={() => {
+                  if (paymentSubmitting) return;
                   if (paymentMethod === "CASH" && cashGiven) {
                     executePayment("CASH", parseFloat(cashGiven));
                   } else if (paymentMethod !== "CASH") {
                     executePayment(paymentMethod, 0);
                   }
                 }}
-                disabled={paymentMethod === "CASH" && (!cashGiven || balance < 0)}
+                disabled={
+                  paymentSubmitting ||
+                  (paymentMethod === "CASH" && (!cashGiven || balance < 0))
+                }
                 className={`w-full py-4 rounded-lg font-bold text-lg transition-all ${
-                  paymentMethod === "CASH" && (!cashGiven || balance < 0)
+                  paymentSubmitting || (paymentMethod === "CASH" && (!cashGiven || balance < 0))
                     ? "bg-gray-300 text-gray-500 cursor-not-allowed"
                     : "cv-acid-btn shadow-lg"
                 }`}
               >
-                CONFIRM PAYMENT
+                {paymentSubmitting ? "PROCESSING..." : "CONFIRM PAYMENT"}
               </button>
             </div>
           </div>

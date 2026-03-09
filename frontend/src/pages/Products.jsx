@@ -5,6 +5,7 @@ import { getActiveBranchId, onActiveBranchChange } from "../utils/branchContext.
 const CATEGORIES = [
   "Rice",
   "Kottu",
+  "Noodles",
   "Burger",
   "Submarine",
   "Juice",
@@ -15,6 +16,7 @@ const CATEGORIES = [
 const CATEGORY_ICONS = {
   Rice: "\u{1F35A}",
   Kottu: "\u{1F35C}",
+  Noodles: "\u{1F35D}",
   Burger: "\u{1F354}",
   Submarine: "\u{1F956}",
   Juice: "\u{1F964}",
@@ -83,9 +85,10 @@ export default function Products() {
   const [form, setForm] = useState({
     name: "",
     category: "",
-    type: "simple",
     price: "",
-    variants: [{ name: "", price: "" }],
+    has_portions: false,
+    small_price: "",
+    large_price: "",
     is_active: true,
     image_url: "",
   });
@@ -187,9 +190,10 @@ export default function Products() {
     setForm({
       name: "",
       category: "",
-      type: "simple",
       price: "",
-      variants: [{ name: "", price: "" }],
+      has_portions: false,
+      small_price: "",
+      large_price: "",
       is_active: true,
       image_url: "",
     });
@@ -203,13 +207,31 @@ export default function Products() {
 
   // Open modal for editing
   const openEditModal = async (product) => {
+    const smallPriceValue =
+      product.small_price !== undefined && product.small_price !== null
+        ? String(product.small_price)
+        : "";
+    const largePriceValue =
+      product.large_price !== undefined && product.large_price !== null
+        ? String(product.large_price)
+        : "";
+    const hasPortions =
+      product?.has_portions === true ||
+      smallPriceValue !== "" ||
+      largePriceValue !== "";
+    const basePriceValue =
+      product.price !== undefined && product.price !== null
+        ? String(product.price)
+        : "";
+
     setEditingProduct(product);
     setForm({
       name: product.name || "",
       category: product.category || "",
-      type: "simple",
-      price: product.price || "",
-      variants: [{ name: "", price: "" }],
+      price: basePriceValue,
+      has_portions: hasPortions,
+      small_price: smallPriceValue || largePriceValue || basePriceValue,
+      large_price: largePriceValue || smallPriceValue || basePriceValue,
       is_active: product.is_active !== false,
       image_url: String(product.image_url || ""),
     });
@@ -396,16 +418,61 @@ export default function Products() {
       return;
     }
 
-    if (form.type === "simple" && !form.price) {
-      setMessage("Price is required for simple products");
-      return;
+    const hasPortions = form.has_portions === true;
+    const parsedPrice = Number.parseFloat(form.price);
+    const rawSmall = String(form.small_price ?? "").trim();
+    const rawLarge = String(form.large_price ?? "").trim();
+    const hasSmallInput = rawSmall.length > 0;
+    const hasLargeInput = rawLarge.length > 0;
+    const parsedSmallPrice = hasSmallInput ? Number.parseFloat(rawSmall) : NaN;
+    const parsedLargePrice = hasLargeInput ? Number.parseFloat(rawLarge) : NaN;
+    const normalizedSmallPrice = hasSmallInput ? parsedSmallPrice : parsedLargePrice;
+    const normalizedLargePrice = hasLargeInput ? parsedLargePrice : parsedSmallPrice;
+
+    if (!hasPortions) {
+      if (!form.price) {
+        setMessage("Price is required");
+        return;
+      }
+      if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+        setMessage("Price must be a valid non-negative number");
+        return;
+      }
+    } else {
+      if (!hasSmallInput && !hasLargeInput) {
+        setMessage("Enter Small and/or Large price");
+        return;
+      }
+      if (!Number.isFinite(normalizedSmallPrice) || normalizedSmallPrice < 0) {
+        setMessage("Small price must be a valid non-negative number");
+        return;
+      }
+      if (!Number.isFinite(normalizedLargePrice) || normalizedLargePrice < 0) {
+        setMessage("Large price must be a valid non-negative number");
+        return;
+      }
+      if (normalizedSmallPrice <= 0 && normalizedLargePrice <= 0) {
+        setMessage("Small/Large prices must be greater than zero");
+        return;
+      }
     }
 
     try {
+      const effectivePrice = hasPortions
+        ? Number.isFinite(parsedPrice) && parsedPrice >= 0
+          ? parsedPrice
+          : normalizedSmallPrice > 0
+          ? normalizedSmallPrice
+          : normalizedLargePrice
+        : parsedPrice;
+
       const payload = {
         name: String(form.name || "").trim(),
         category: form.category,
-        price: form.type === "simple" ? parseFloat(form.price) : null,
+        price: effectivePrice,
+        small_price: hasPortions ? normalizedSmallPrice : null,
+        large_price: hasPortions ? normalizedLargePrice : null,
+        has_portions: hasPortions,
         is_active: form.is_active,
         image_url: form.image_url || null,
       };
@@ -470,7 +537,7 @@ export default function Products() {
       loadProducts();
       markProductsUpdated();
     } catch (err) {
-      setMessage("Failed to update status");
+      setMessage(err.response?.data?.message || "Failed to update status");
     }
   };
 
@@ -485,7 +552,7 @@ export default function Products() {
       markProductsUpdated();
       setTimeout(() => setMessage(""), 3000);
     } catch (err) {
-      setMessage("Failed to delete product");
+      setMessage(err.response?.data?.message || "Failed to delete product");
     }
   };
 
@@ -967,13 +1034,34 @@ export default function Products() {
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <span className="font-semibold text-gray-900">
-                          {formatCurrency(
-                            product.effective_price !== undefined && product.effective_price !== null
-                              ? product.effective_price
-                              : product.price
-                          )}
-                        </span>
+                        {product.has_portions === true ||
+                        product.small_price !== undefined && product.small_price !== null ||
+                        product.large_price !== undefined && product.large_price !== null ? (
+                          <div className="space-y-1">
+                            <div className="font-semibold text-gray-900">
+                              Small: {formatCurrency(
+                                product.small_price !== undefined && product.small_price !== null
+                                  ? product.small_price
+                                  : product.large_price
+                              )}
+                            </div>
+                            <div className="font-semibold text-gray-900">
+                              Large: {formatCurrency(
+                                product.large_price !== undefined && product.large_price !== null
+                                  ? product.large_price
+                                  : product.small_price
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="font-semibold text-gray-900">
+                            {formatCurrency(
+                              product.effective_price !== undefined && product.effective_price !== null
+                                ? product.effective_price
+                                : product.price
+                            )}
+                          </span>
+                        )}
                         {product.price_override !== undefined && product.price_override !== null && (
                           <div className="text-[11px] text-blue-600 font-semibold mt-1">
                             Base {formatCurrency(product.price)}  -  Override applied
@@ -1190,30 +1278,44 @@ export default function Products() {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Product Type
+                      Pricing Mode
                     </label>
-                    <div className="flex gap-4">
-                      <label className="flex items-center">
-                        <input
-                          type="radio"
-                          value="simple"
-                          checked={form.type === "simple"}
-                          onChange={(e) => setForm({ ...form, type: e.target.value })}
-                          className="mr-2"
-                        />
-                        <span>Simple Item</span>
-                      </label>
-                      <label className="flex items-center">
-                        <input
-                          type="radio"
-                          value="variant"
-                          checked={form.type === "variant"}
-                          onChange={(e) => setForm({ ...form, type: e.target.value })}
-                          className="mr-2"
-                          disabled
-                        />
-                        <span className="text-gray-400">Variant Item (Coming Soon)</span>
-                      </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setForm((prev) => ({
+                            ...prev,
+                            has_portions: false,
+                            price: prev.price || prev.small_price || prev.large_price || "",
+                          }))
+                        }
+                        className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
+                          !form.has_portions
+                            ? "border-blue-500 bg-blue-50 text-blue-800"
+                            : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                        }`}
+                      >
+                        Single Price
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setForm((prev) => ({
+                            ...prev,
+                            has_portions: true,
+                            small_price: prev.small_price || prev.price || "",
+                            large_price: prev.large_price || prev.price || "",
+                          }))
+                        }
+                        className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
+                          form.has_portions
+                            ? "border-emerald-500 bg-emerald-50 text-emerald-800"
+                            : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                        }`}
+                      >
+                        Small / Large Portions
+                      </button>
                     </div>
                   </div>
 
@@ -1250,7 +1352,7 @@ export default function Products() {
                     Pricing
                   </h3>
 
-                  {form.type === "simple" ? (
+                  {!form.has_portions ? (
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Price (Rs.) *
@@ -1262,12 +1364,46 @@ export default function Products() {
                         onChange={(e) => setForm({ ...form, price: e.target.value })}
                         placeholder="850.00"
                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        required={form.type === "simple"}
+                        required={!form.has_portions}
                       />
                     </div>
                   ) : (
-                    <div className="space-y-3">
-                      <div className="text-sm text-gray-600 mb-3">Variant pricing (Coming Soon)</div>
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Small Price (Rs.) *
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={form.small_price}
+                            onChange={(e) => setForm({ ...form, small_price: e.target.value })}
+                            placeholder="650.00"
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            required={form.has_portions && String(form.large_price || "").trim().length === 0}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Large Price (Rs.) *
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={form.large_price}
+                            onChange={(e) => setForm({ ...form, large_price: e.target.value })}
+                            placeholder="900.00"
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            required={form.has_portions && String(form.small_price || "").trim().length === 0}
+                          />
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        POS will ask for Small or Large when this item is selected.
+                      </div>
                     </div>
                   )}
                 </div>

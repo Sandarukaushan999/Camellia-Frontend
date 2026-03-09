@@ -28,6 +28,114 @@ const menuIconClasses = {
   Settings: "fi-rr-settings-sliders",
 };
 
+const SECTION_UNLOCK_STORAGE_KEY = "cv_section_unlocks";
+const LOCKED_NAV_SECTIONS = Object.freeze({
+  orders: {
+    label: "Orders",
+    routes: ["/order-queue", "/orders"],
+  },
+  qrCategory: {
+    label: "QR Category",
+    routes: ["/qr-category"],
+  },
+});
+
+const NAV_ROUTE_TO_SECTION_KEY = Object.freeze({
+  "/order-queue": "orders",
+  "/orders": "orders",
+  "/qr-category": "qrCategory",
+});
+
+function loadStoredSectionUnlocks() {
+  try {
+    const raw = localStorage.getItem(SECTION_UNLOCK_STORAGE_KEY);
+    if (!raw) {
+      return {};
+    }
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return {};
+    }
+    return parsed;
+  } catch {
+    return {};
+  }
+}
+
+function persistSectionUnlocks(nextUnlocks) {
+  try {
+    localStorage.setItem(SECTION_UNLOCK_STORAGE_KEY, JSON.stringify(nextUnlocks || {}));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function isUnlockStillValid(value, now = Date.now()) {
+  if (String(value || "").toLowerCase() === "forever") {
+    return true;
+  }
+  const timestamp = Number(value);
+  return Number.isFinite(timestamp) && timestamp > now;
+}
+
+function getLockedSectionKeyForPath(pathname) {
+  const normalizedPath = String(pathname || "").trim();
+  if (!normalizedPath) {
+    return null;
+  }
+
+  for (const [sectionKey, config] of Object.entries(LOCKED_NAV_SECTIONS)) {
+    const routes = Array.isArray(config?.routes) ? config.routes : [];
+    const matched = routes.some((route) => {
+      const normalizedRoute = String(route || "").trim();
+      if (!normalizedRoute) {
+        return false;
+      }
+      return (
+        normalizedPath === normalizedRoute ||
+        normalizedPath.startsWith(`${normalizedRoute}/`)
+      );
+    });
+    if (matched) {
+      return sectionKey;
+    }
+  }
+
+  return null;
+}
+
+function resolveUnlockCode(rawCode) {
+  const normalized = String(rawCode || "").trim();
+  const match = /^VOXO@123\/(\d+)$/.exec(normalized);
+  if (!match) {
+    return {
+      valid: false,
+      error: "Invalid unlock password.",
+    };
+  }
+
+  const tokenValue = Number.parseInt(match[1], 10);
+  const now = Date.now();
+
+  if (tokenValue === 1) {
+    return { valid: true, until: now + 1 * 60 * 60 * 1000 };
+  }
+  if (tokenValue === 12) {
+    return { valid: true, until: now + 12 * 60 * 60 * 1000 };
+  }
+  if (tokenValue === 5) {
+    return { valid: true, until: now + 5 * 24 * 60 * 60 * 1000 };
+  }
+  if (tokenValue === 2001) {
+    return { valid: true, until: "forever" };
+  }
+
+  return {
+    valid: false,
+    error: "Invalid unlock password.",
+  };
+}
+
 export default function MainLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -42,6 +150,15 @@ export default function MainLayout() {
   });
   const [branches, setBranches] = useState([]);
   const [activeBranchId, setActiveBranchId] = useState(() => getActiveBranchId(null));
+  const [sectionUnlocks, setSectionUnlocks] = useState(() => loadStoredSectionUnlocks());
+  const [unlockDialog, setUnlockDialog] = useState({
+    open: false,
+    sectionKey: "",
+    sectionLabel: "",
+    targetPath: "",
+    code: "",
+    error: "",
+  });
   const isPOSWorkspace =
     location.pathname === "/pos" ||
     location.pathname.startsWith("/pos/") ||
@@ -173,6 +290,64 @@ export default function MainLayout() {
     );
   }, [links, location.pathname]);
 
+  const isSectionUnlocked = (sectionKey) => {
+    if (!sectionKey) {
+      return true;
+    }
+    return isUnlockStillValid(sectionUnlocks?.[sectionKey]);
+  };
+
+  const promptUnlockDialog = (sectionKey, targetPath) => {
+    const sectionLabel = LOCKED_NAV_SECTIONS[sectionKey]?.label || "Section";
+    setUnlockDialog({
+      open: true,
+      sectionKey,
+      sectionLabel,
+      targetPath: targetPath || "",
+      code: "",
+      error: "",
+    });
+  };
+
+  const closeUnlockDialog = () => {
+    setUnlockDialog({
+      open: false,
+      sectionKey: "",
+      sectionLabel: "",
+      targetPath: "",
+      code: "",
+      error: "",
+    });
+  };
+
+  const submitUnlockCode = () => {
+    const resolved = resolveUnlockCode(unlockDialog.code);
+    if (!resolved.valid) {
+      setUnlockDialog((prev) => ({ ...prev, error: resolved.error || "Invalid code." }));
+      return;
+    }
+
+    const sectionKey = unlockDialog.sectionKey;
+    if (!sectionKey) {
+      closeUnlockDialog();
+      return;
+    }
+
+    setSectionUnlocks((prev) => {
+      const nextUnlocks = {
+        ...(prev || {}),
+        [sectionKey]: resolved.until,
+      };
+      persistSectionUnlocks(nextUnlocks);
+      return nextUnlocks;
+    });
+
+    const nextPath = unlockDialog.targetPath || LOCKED_NAV_SECTIONS[sectionKey]?.routes?.[0] || "/pos";
+    closeUnlockDialog();
+    setMobileNavOpen(false);
+    navigate(nextPath);
+  };
+
   useEffect(() => {
     setMobileNavOpen(false);
   }, [location.pathname]);
@@ -199,6 +374,47 @@ export default function MainLayout() {
       document.body.style.overflow = previousOverflow;
     };
   }, [mobileNavOpen]);
+
+  useEffect(() => {
+    const now = Date.now();
+    const current = sectionUnlocks || {};
+    const cleanedUnlocks = Object.entries(current).reduce((acc, [sectionKey, value]) => {
+      if (isUnlockStillValid(value, now)) {
+        acc[sectionKey] = value;
+      }
+      return acc;
+    }, {});
+    const before = JSON.stringify(current);
+    const after = JSON.stringify(cleanedUnlocks);
+    if (before !== after) {
+      setSectionUnlocks(cleanedUnlocks);
+      persistSectionUnlocks(cleanedUnlocks);
+    }
+  }, [sectionUnlocks]);
+
+  useEffect(() => {
+    const lockedSectionKey = getLockedSectionKeyForPath(location.pathname);
+    if (!lockedSectionKey) {
+      return;
+    }
+    if (isSectionUnlocked(lockedSectionKey)) {
+      return;
+    }
+
+    const fallbackLink = links.find((link) => {
+      const sectionKey = NAV_ROUTE_TO_SECTION_KEY[link.to];
+      return !sectionKey || isSectionUnlocked(sectionKey);
+    });
+    const fallbackPath = fallbackLink?.to || "/pos";
+
+    if (!unlockDialog.open || unlockDialog.sectionKey !== lockedSectionKey) {
+      promptUnlockDialog(lockedSectionKey, location.pathname);
+    }
+
+    if (location.pathname !== fallbackPath) {
+      navigate(fallbackPath, { replace: true });
+    }
+  }, [location.pathname, links, navigate, sectionUnlocks, unlockDialog.open, unlockDialog.sectionKey]);
 
   useEffect(() => {
     if (!user?.token) {
@@ -304,19 +520,36 @@ export default function MainLayout() {
         </button>
 
         <nav className="cv-nav">
-          {links.map((link) => (
-            <NavLink
-              key={link.to}
-              to={link.to}
-              title={link.label}
-              className={({ isActive }) => `cv-nav-link ${isActive ? "is-active" : ""}`}
-            >
-              <span className="cv-nav-icon">
-                <i className={menuIconClasses[link.label] || "fi-rr-apps"} aria-hidden="true" />
-              </span>
-              <span>{link.label}</span>
-            </NavLink>
-          ))}
+          {links.map((link) => {
+            const sectionKey = NAV_ROUTE_TO_SECTION_KEY[link.to] || "";
+            const isLocked = Boolean(sectionKey) && !isSectionUnlocked(sectionKey);
+            return (
+              <NavLink
+                key={link.to}
+                to={link.to}
+                title={isLocked ? `${link.label} (Locked)` : link.label}
+                className={({ isActive }) => `cv-nav-link ${isActive ? "is-active" : ""}`}
+                onClick={(event) => {
+                  if (isLocked) {
+                    event.preventDefault();
+                    promptUnlockDialog(sectionKey, link.to);
+                  } else {
+                    setMobileNavOpen(false);
+                  }
+                }}
+              >
+                <span className="cv-nav-icon">
+                  <i className={menuIconClasses[link.label] || "fi-rr-apps"} aria-hidden="true" />
+                </span>
+                <span>{link.label}</span>
+                {isLocked && (
+                  <span className="text-[10px] font-semibold tracking-wide text-amber-200">
+                    LOCK
+                  </span>
+                )}
+              </NavLink>
+            );
+          })}
         </nav>
 
         <div className="cv-user-area">
@@ -430,6 +663,60 @@ export default function MainLayout() {
           <Footer />
         </div>
       </main>
+
+      {unlockDialog.open && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white border border-gray-200 shadow-2xl p-5">
+            <div className="text-lg font-bold text-gray-900">
+              Unlock {unlockDialog.sectionLabel}
+            </div>
+            <div className="mt-2 text-sm text-gray-600">
+              Enter unlock password to access this section.
+            </div>
+            <input
+              type="password"
+              value={unlockDialog.code}
+              onChange={(event) =>
+                setUnlockDialog((prev) => ({
+                  ...prev,
+                  code: event.target.value,
+                  error: "",
+                }))
+              }
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  submitUnlockCode();
+                }
+              }}
+              autoFocus
+              autoComplete="off"
+              placeholder="Enter unlock password"
+              className="mt-4 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            {unlockDialog.error && (
+              <div className="mt-2 text-xs font-semibold text-red-600">
+                {unlockDialog.error}
+              </div>
+            )}
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeUnlockDialog}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitUnlockCode}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+              >
+                Unlock
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

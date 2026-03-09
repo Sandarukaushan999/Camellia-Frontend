@@ -18,10 +18,10 @@ const DEFAULT_PRINTER_SETTINGS = {
   paperSize: "80mm",
   autoPrint: true,
   printMode: "ESC_POS_TCP",
-  model: "XPrinter XP-K200L",
+  model: "XPrinter XP-80T",
   host: "",
   port: 9100,
-  charsPerLine: 48,
+  charsPerLine: 42,
   timeoutMs: 4000,
 };
 
@@ -232,7 +232,7 @@ export default function Settings() {
           host: printerHost,
           port: Number(printerSettings.port) || 9100,
           paperSize: printerSettings.paperSize || "80mm",
-          charsPerLine: Number(printerSettings.charsPerLine) || 48,
+          charsPerLine: Number(printerSettings.charsPerLine) || 42,
           timeoutMs: Number(printerSettings.timeoutMs) || 4000,
         },
         receipt: {
@@ -548,7 +548,9 @@ export default function Settings() {
                 <div className="space-y-6">
                   <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                     <div className="text-sm font-semibold text-blue-900">Recommended Model</div>
-                    <div className="text-xs text-blue-700 mt-1">{printerSettings.model || "XPrinter XP-K200L"} (80mm)</div>
+                    <div className="text-xs text-blue-700 mt-1">
+                      {printerSettings.model || "XPrinter XP-80T"} (80mm)
+                    </div>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Print Mode</label>
@@ -628,7 +630,7 @@ export default function Settings() {
                       <input
                         type="number"
                         min="32"
-                        max="56"
+                        max="48"
                         value={printerSettings.charsPerLine}
                         onChange={(e) => {
                           setPrinterSettings((prev) => ({ ...prev, charsPerLine: e.target.value }));
@@ -636,6 +638,9 @@ export default function Settings() {
                         }}
                         className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
+                      <div className="text-xs text-gray-500 mt-1">
+                        Use 42 for XPrinter XP-80T on 80mm paper.
+                      </div>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Timeout (ms)</label>
@@ -655,7 +660,9 @@ export default function Settings() {
                   <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                     <div>
                       <div className="font-medium text-gray-900">Auto Print</div>
-                      <div className="text-xs text-gray-500 mt-1">Automatically print receipt after payment</div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        Confirm Payment always sends direct ESC/POS print immediately.
+                      </div>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
                       <input

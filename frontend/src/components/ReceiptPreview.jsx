@@ -1,5 +1,5 @@
 import React from "react";
-import logo from "../assests/Clogo.jpeg";
+import logo from "../assests/bill-logo.png";
 
 export default function ReceiptPreview({ orderData }) {
   if (!orderData) {
@@ -64,20 +64,25 @@ export default function ReceiptPreview({ orderData }) {
       <style>{`
         .receipt-preview-wrapper {
           font-family: 'Courier New', monospace;
-          font-size: 11px;
-          line-height: 1.4;
+          font-size: 12px;
+          line-height: 1.5;
           color: #000;
           background: white;
-          padding: 12px;
+          padding: 8px;
           border-radius: 8px;
           width: 100%;
           box-sizing: border-box;
           overflow: visible;
         }
+
+        .receipt-preview-wrapper, .receipt-preview-wrapper * {
+          font-weight: 700;
+          color: #000;
+        }
         
         .receipt-preview-logo {
           text-align: center;
-          margin-bottom: 8px;
+          margin-bottom: 4px;
           display: flex;
           justify-content: center;
           align-items: center;
@@ -85,9 +90,9 @@ export default function ReceiptPreview({ orderData }) {
         }
         
         .receipt-preview-logo img {
-          max-width: 80px;
+          max-width: 110px;
           height: auto;
-          margin-bottom: 4px;
+          margin-bottom: 2px;
           display: block;
           margin-left: auto;
           margin-right: auto;
@@ -95,30 +100,30 @@ export default function ReceiptPreview({ orderData }) {
         
         .receipt-preview-header {
           text-align: center;
-          margin-bottom: 8px;
+          margin-bottom: 4px;
         }
         
         .receipt-preview-header h2 {
-          font-size: 14px;
+          font-size: 16px;
           font-weight: bold;
           margin: 0 0 2px 0;
           letter-spacing: 0.5px;
         }
         
         .receipt-preview-header p {
-          font-size: 9px;
+          font-size: 11px;
           margin: 1px 0;
-          color: #333;
+          color: #000;
         }
         
         .receipt-preview-divider {
           border-top: 1px dashed #666;
-          margin: 6px 0;
+          margin: 4px 0;
         }
         
         .receipt-preview-info {
-          margin: 6px 0;
-          font-size: 9px;
+          margin: 4px 0;
+          font-size: 11px;
         }
         
         .receipt-preview-info-row {
@@ -128,7 +133,7 @@ export default function ReceiptPreview({ orderData }) {
         }
         
         .receipt-preview-items {
-          margin: 8px 0;
+          margin: 6px 0;
         }
         
         .receipt-preview-items-header {
@@ -138,14 +143,14 @@ export default function ReceiptPreview({ orderData }) {
           margin-bottom: 4px;
           padding-bottom: 2px;
           border-bottom: 1px solid #000;
-          font-size: 9px;
+          font-size: 11px;
         }
         
         .receipt-preview-item {
           display: flex;
           justify-content: space-between;
           margin: 3px 0;
-          font-size: 9px;
+          font-size: 11px;
         }
         
         .receipt-preview-item-name {
@@ -155,19 +160,19 @@ export default function ReceiptPreview({ orderData }) {
         
         .receipt-preview-item-qty {
           text-align: center;
-          width: 25px;
+          width: 28px;
           margin-right: 6px;
         }
         
         .receipt-preview-item-price {
           text-align: right;
-          width: 60px;
+          width: 70px;
           font-weight: bold;
         }
         
         .receipt-preview-totals {
-          margin: 8px 0;
-          font-size: 9px;
+          margin: 6px 0;
+          font-size: 11px;
         }
         
         .receipt-preview-total-row {
@@ -179,20 +184,51 @@ export default function ReceiptPreview({ orderData }) {
         .receipt-preview-grand-total {
           border-top: 2px solid #000;
           border-bottom: 2px solid #000;
-          padding: 6px 0;
-          margin: 8px 0;
-          font-size: 12px;
+          padding: 5px 0;
+          margin: 6px 0;
+          font-size: 14px;
           font-weight: bold;
         }
         
         .receipt-preview-footer {
-          margin-top: 10px;
-          padding-top: 8px;
+          margin-top: 6px;
+          padding-top: 6px;
           border-top: 1px dashed #666;
           text-align: center;
-          font-size: 8px;
-          color: #555;
-          line-height: 1.5;
+          font-size: 10px;
+          color: #000;
+          line-height: 1.4;
+        }
+
+        .receipt-preview-footer-title {
+          font-size: 11px;
+          margin-bottom: 2px;
+        }
+
+        .receipt-preview-footer-domain {
+          font-size: 11px;
+          margin-bottom: 2px;
+        }
+
+        .receipt-preview-footer-copy {
+          margin-bottom: 3px;
+          font-size: 10.5px;
+        }
+
+        .receipt-preview-footer-services {
+          margin: 1px 0;
+          font-size: 9.5px;
+        }
+
+        .receipt-preview-footer-contact-title {
+          margin-top: 4px;
+          margin-bottom: 1px;
+          font-size: 10px;
+        }
+
+        .receipt-preview-footer-thanks {
+          margin-top: 4px;
+          font-size: 11px;
         }
       `}</style>
 
@@ -235,8 +271,8 @@ export default function ReceiptPreview({ orderData }) {
         <div className="receipt-preview-items">
           <div className="receipt-preview-items-header">
             <span style={{ flex: 1 }}>Item</span>
-            <span style={{ width: 25, textAlign: "center" }}>Qty</span>
-            <span style={{ width: 60, textAlign: "right" }}>Amount</span>
+            <span style={{ width: 28, textAlign: "center" }}>Qty</span>
+            <span style={{ width: 70, textAlign: "right" }}>Amount</span>
           </div>
           {items.map((item, idx) => {
             const itemTotal = parseFloat(item.price || 0) * (item.qty || 0);
@@ -305,13 +341,17 @@ export default function ReceiptPreview({ orderData }) {
 
         {/* Footer */}
         <div className="receipt-preview-footer">
-          <div>(c) 2025 VOXOsolution</div>
+          <div className="receipt-preview-footer-title">System Design & Powered By</div>
+          <div className="receipt-preview-footer-domain">VOXOsolutions.com</div>
+          <div className="receipt-preview-footer-copy">(c) 2026 All rights reserved.</div>
+          <div className="receipt-preview-footer-services">ERP / POS / WEBSITE / SOFTWARE SOLUTIONS</div>
+          <div className="receipt-preview-footer-services">AI-ML Solutions / IoT Solutions</div>
+          <div className="receipt-preview-footer-contact-title">PLEASE contact WhatsApp or Call</div>
+          <div>0710901871</div>
           <div>voxosolution@gmail.com</div>
-          <div>071 090 1871</div>
+          <div className="receipt-preview-footer-thanks">Thank you for visiting!</div>
         </div>
       </div>
     </>
   );
 }
-
-

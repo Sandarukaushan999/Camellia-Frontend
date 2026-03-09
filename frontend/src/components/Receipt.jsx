@@ -1,5 +1,5 @@
 import React from "react";
-import logo from "../assests/Clogo.jpeg";
+import logo from "../assests/bill-logo.png";
 import { formatBusinessDate, formatBusinessTime } from "../utils/timezone.js";
 
 export default function Receipt({ orderData }) {
@@ -83,9 +83,18 @@ export default function Receipt({ orderData }) {
   }
 
   return (
-    <div className="receipt-container" id="receipt-print">
+    <div className="receipt-print-root" id="receipt-print">
       <style>{`
+        @page {
+          size: 80mm auto;
+          margin: 0;
+        }
+
         @media print {
+          body {
+            margin: 0;
+            padding: 0;
+          }
           body * {
             visibility: hidden;
           }
@@ -100,22 +109,34 @@ export default function Receipt({ orderData }) {
             max-width: 80mm;
           }
         }
+
+        .receipt-print-root {
+          width: 80mm;
+          max-width: 80mm;
+          margin: 0 auto;
+          background: white;
+        }
         
         .receipt-container {
           width: 80mm;
           max-width: 80mm;
           margin: 0 auto;
-          padding: 20px 10px 10px 10px;
+          padding: 8px 8px 6px 8px;
           background: white;
           font-family: 'Courier New', monospace;
-          font-size: 12px;
-          line-height: 1.4;
+          font-size: 13px;
+          line-height: 1.5;
+          color: #000;
+        }
+
+        .receipt-container, .receipt-container * {
+          font-weight: 700;
           color: #000;
         }
         
         .receipt-logo {
           text-align: center;
-          margin-bottom: 15px;
+          margin-bottom: 6px;
           display: flex;
           justify-content: center;
           align-items: center;
@@ -123,9 +144,9 @@ export default function Receipt({ orderData }) {
         }
         
         .receipt-logo img {
-          max-width: 120px;
+          max-width: 150px;
           height: auto;
-          margin-bottom: 8px;
+          margin-bottom: 2px;
           display: block;
           margin-left: auto;
           margin-right: auto;
@@ -133,30 +154,30 @@ export default function Receipt({ orderData }) {
         
         .receipt-header {
           text-align: center;
-          margin-bottom: 12px;
+          margin-bottom: 6px;
         }
         
         .receipt-header h1 {
-          font-size: 18px;
+          font-size: 20px;
           font-weight: bold;
           margin: 0 0 4px 0;
           letter-spacing: 1px;
         }
         
         .receipt-header p {
-          font-size: 11px;
+          font-size: 12px;
           margin: 2px 0;
-          color: #333;
+          color: #000;
         }
         
         .receipt-divider {
           border-top: 1px dashed #000;
-          margin: 10px 0;
+          margin: 6px 0;
         }
         
         .receipt-info {
-          margin: 10px 0;
-          font-size: 11px;
+          margin: 6px 0;
+          font-size: 12px;
         }
         
         .receipt-info-row {
@@ -170,7 +191,7 @@ export default function Receipt({ orderData }) {
         }
         
         .receipt-items {
-          margin: 12px 0;
+          margin: 8px 0;
         }
         
         .receipt-items-header {
@@ -180,14 +201,14 @@ export default function Receipt({ orderData }) {
           margin-bottom: 6px;
           padding-bottom: 4px;
           border-bottom: 1px solid #000;
-          font-size: 11px;
+          font-size: 12px;
         }
         
         .receipt-item {
           display: flex;
           justify-content: space-between;
           margin: 6px 0;
-          font-size: 11px;
+          font-size: 12px;
         }
         
         .receipt-item-name {
@@ -197,19 +218,19 @@ export default function Receipt({ orderData }) {
         
         .receipt-item-qty {
           text-align: center;
-          width: 30px;
+          width: 34px;
           margin-right: 8px;
         }
         
         .receipt-item-price {
           text-align: right;
-          width: 70px;
+          width: 78px;
           font-weight: bold;
         }
         
         .receipt-totals {
-          margin: 12px 0;
-          font-size: 11px;
+          margin: 8px 0;
+          font-size: 12px;
         }
         
         .receipt-total-row {
@@ -231,29 +252,56 @@ export default function Receipt({ orderData }) {
           border-top: 2px solid #000;
           border-bottom: 2px solid #000;
           padding: 8px 0;
-          margin: 10px 0;
-          font-size: 14px;
+          margin: 8px 0;
+          font-size: 16px;
           font-weight: bold;
         }
         
         .receipt-payment {
-          margin: 12px 0;
-          font-size: 11px;
+          margin: 8px 0;
+          font-size: 12px;
         }
         
         .receipt-footer {
           text-align: center;
-          margin-top: 20px;
-          padding-top: 15px;
+          margin-top: 14px;
+          padding-top: 8px;
           border-top: 1px dashed #000;
-          font-size: 9px;
-          color: #555;
-          line-height: 1.6;
+          font-size: 11px;
+          color: #000;
+          line-height: 1.4;
         }
         
-        .receipt-footer-copyright {
-          font-weight: bold;
-          margin-top: 8px;
+        .receipt-footer-title {
+          font-size: 12px;
+          letter-spacing: 0.4px;
+          margin-bottom: 2px;
+        }
+
+        .receipt-footer-domain {
+          font-size: 12px;
+          margin-bottom: 2px;
+        }
+
+        .receipt-footer-copy {
+          margin-bottom: 4px;
+          font-size: 11.5px;
+        }
+
+        .receipt-footer-services {
+          margin: 2px 0;
+          font-size: 11px;
+        }
+
+        .receipt-footer-contact-title {
+          margin-top: 5px;
+          margin-bottom: 2px;
+          font-size: 11.5px;
+        }
+
+        .receipt-footer-thanks {
+          margin-top: 5px;
+          font-size: 12px;
         }
       `}</style>
 
@@ -332,8 +380,8 @@ export default function Receipt({ orderData }) {
         <div className="receipt-items">
           <div className="receipt-items-header">
             <span style={{ flex: 1 }}>Item</span>
-            <span style={{ width: 30, textAlign: "center" }}>Qty</span>
-            <span style={{ width: 70, textAlign: "right" }}>Amount</span>
+            <span style={{ width: 34, textAlign: "center" }}>Qty</span>
+            <span style={{ width: 78, textAlign: "right" }}>Amount</span>
           </div>
           {items.map((item, idx) => {
             const itemTotal = parseFloat(item.price || 0) * (item.qty || 0);
@@ -424,13 +472,17 @@ export default function Receipt({ orderData }) {
 
         {/* Footer */}
         <div className="receipt-footer">
-          <div>(c) 2025 VOXOsolution</div>
+          <div className="receipt-footer-title">System Design & Powered By</div>
+          <div className="receipt-footer-domain">VOXOsolutions.com</div>
+          <div className="receipt-footer-copy">(c) 2026 All rights reserved.</div>
+          <div className="receipt-footer-services">ERP / POS / WEBSITE / SOFTWARE SOLUTIONS</div>
+          <div className="receipt-footer-services">AI-ML Solutions / IoT Solutions</div>
+          <div className="receipt-footer-contact-title">PLEASE contact WhatsApp or Call</div>
+          <div>0710901871</div>
           <div>voxosolution@gmail.com</div>
-          <div>071 090 1871</div>
-        </div>
-
-        <div style={{ textAlign: "center", marginTop: "10px", fontSize: "10px", color: "#999" }}>
-          Thank you for visiting!
+          <div className="receipt-footer-thanks">Thank you for visiting!</div>
+          <div className="receipt-footer-thanks">Thank you for visiting!</div>
+          <div className="receipt-footer-thanks">Thank you for visiting!</div>
         </div>
       </div>
     </div>
