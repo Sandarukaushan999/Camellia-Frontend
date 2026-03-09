@@ -297,6 +297,67 @@
   font-weight: 900;
 }
 
+.cv-public-portion-grid {
+  margin-top: auto;
+  padding-top: 0.55rem;
+  display: grid;
+  gap: 0.38rem;
+}
+
+.cv-public-portion-row {
+  border-radius: 0.72rem;
+  border: 1px solid #dbe4ee;
+  background: #f8fafc;
+  padding: 0.34rem 0.38rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.44rem;
+}
+
+.cv-public-portion-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.34rem;
+}
+
+.cv-public-portion-badge {
+  min-width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 999px;
+  border: 1px solid rgba(120, 150, 8, 0.46);
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 0.68rem;
+  font-weight: 900;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.cv-public-portion-meta strong {
+  font-size: 0.82rem;
+  color: #0f172a;
+}
+
+.cv-public-add-btn--portion {
+  min-height: 32px;
+  border-radius: 0.6rem;
+  font-size: 0.7rem;
+  padding: 0.22rem 0.56rem;
+}
+
+.cv-public-qty-box--portion {
+  gap: 0.26rem;
+}
+
+.cv-public-qty-btn--portion {
+  min-width: 30px;
+  min-height: 30px;
+  font-size: 0.86rem;
+}
+
 .cv-public-empty-state {
   border-radius: 0.85rem;
   border: 1px dashed #cbd5e1;

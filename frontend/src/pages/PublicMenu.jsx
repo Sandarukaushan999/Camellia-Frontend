@@ -8,6 +8,7 @@ const CUSTOMER_PROFILE_STORAGE_KEY = "cv_public_customer_profiles_v1";
 const MAX_STORED_CUSTOMERS = 80;
 const MENU_LOAD_TIMEOUT_MS = 45000;
 const MENU_LOAD_RETRY_DELAYS_MS = [900, 1800];
+const PORTION_OPTIONS = Object.freeze(["SMALL", "LARGE"]);
 
 const CATEGORY_ORDER = ["burger", "kottu", "noodles", "submarine", "cafe", "juice", "rice", "pizza"];
 const CATEGORY_META = {
@@ -33,6 +34,14 @@ const DEFAULT_ORDER_FORM = {
   note: "",
 };
 
+function toSafeMoney(value, fallback = 0) {
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return parsed;
+}
+
 function toMoney(amount) {
   return `Rs. ${Number(amount || 0).toLocaleString("en-US", {
     minimumFractionDigits: 2,
@@ -46,6 +55,75 @@ function normalizePhone(value) {
 
 function normalizeCategory(value) {
   return String(value || "").trim() || "Other";
+}
+
+function normalizePortion(value) {
+  const normalized = String(value || "")
+    .trim()
+    .toUpperCase();
+  return PORTION_OPTIONS.includes(normalized) ? normalized : null;
+}
+
+function getPortionLabel(portion) {
+  return normalizePortion(portion) === "LARGE" ? "Large" : "Small";
+}
+
+function getMenuItemPortionPrices(item) {
+  const smallPriceRaw = toSafeMoney(
+    item?.small_price ??
+      item?.smallPrice ??
+      item?.portion_prices?.small ??
+      item?.portions?.small,
+    NaN
+  );
+  const largePriceRaw = toSafeMoney(
+    item?.large_price ??
+      item?.largePrice ??
+      item?.portion_prices?.large ??
+      item?.portions?.large,
+    NaN
+  );
+  const basePrice = toSafeMoney(item?.price, 0);
+
+  const hasSmall = Number.isFinite(smallPriceRaw) && smallPriceRaw > 0;
+  const hasLarge = Number.isFinite(largePriceRaw) && largePriceRaw > 0;
+  const hasPortions = item?.has_portions === true || hasSmall || hasLarge;
+
+  const smallPrice = hasSmall ? smallPriceRaw : hasLarge ? largePriceRaw : basePrice;
+  const largePrice = hasLarge ? largePriceRaw : hasSmall ? smallPriceRaw : basePrice;
+
+  return {
+    hasPortions,
+    basePrice,
+    smallPrice,
+    largePrice,
+  };
+}
+
+function resolveMenuItemUnitPrice(item, portion = null) {
+  const normalizedPortion = normalizePortion(portion);
+  const pricing = getMenuItemPortionPrices(item);
+  if (!pricing.hasPortions || !normalizedPortion) {
+    return pricing.basePrice;
+  }
+  if (normalizedPortion === "LARGE") {
+    return pricing.largePrice;
+  }
+  return pricing.smallPrice;
+}
+
+function buildCartKey(productId, portion = null) {
+  const normalizedPortion = normalizePortion(portion);
+  return `${String(productId || "")}::${normalizedPortion || "DEFAULT"}`;
+}
+
+function getDisplayName(name, portion = null) {
+  const baseName = String(name || "").trim() || "Item";
+  const normalizedPortion = normalizePortion(portion);
+  if (!normalizedPortion) {
+    return baseName;
+  }
+  return `${baseName} (${getPortionLabel(normalizedPortion)})`;
 }
 
 function categoryKey(value) {
@@ -594,16 +672,34 @@ export default function PublicMenu() {
 
   const cartLines = useMemo(() => {
     return Object.entries(cart)
-      .map(([productId, qty]) => ({
-        productId,
-        qty: Number(qty || 0),
-        item: itemsMap.get(String(productId)),
-      }))
-      .filter((line) => line.item && line.qty > 0)
-      .map((line) => ({
-        ...line,
-        lineTotal: Number(line.item.price || 0) * line.qty,
-      }));
+      .map(([cartKey, line]) => {
+        const productId = String(line?.productId || "").trim();
+        const qty = Number(line?.qty || 0);
+        if (!productId || qty <= 0) {
+          return null;
+        }
+
+        const item = itemsMap.get(productId) || null;
+        const portion = normalizePortion(line?.portion);
+        const unitPrice = toSafeMoney(
+          line?.unitPrice,
+          resolveMenuItemUnitPrice(item || { price: 0 }, portion)
+        );
+        const name = String(line?.name || item?.name || `Item ${productId}`).trim();
+
+        return {
+          cartKey,
+          productId,
+          portion,
+          qty,
+          item,
+          name,
+          displayName: getDisplayName(name, portion),
+          unitPrice,
+          lineTotal: unitPrice * qty,
+        };
+      })
+      .filter(Boolean);
   }, [cart, itemsMap]);
 
   const cartTotal = useMemo(
@@ -621,13 +717,33 @@ export default function PublicMenu() {
   );
   const activeCategoryMeta = useMemo(() => getCategoryMeta(activeCategory), [activeCategory]);
 
-  const changeQty = (productId, delta) => {
-    const key = String(productId);
+  const getCartQty = (productId, portion = null) => {
+    const key = buildCartKey(productId, portion);
+    return Number(cart[key]?.qty || 0);
+  };
+
+  const changeQty = (item, delta, portion = null) => {
+    const productId = String(item?.id || "").trim();
+    if (!productId) {
+      return;
+    }
+    const normalizedPortion = normalizePortion(portion);
+    const key = buildCartKey(productId, normalizedPortion);
     setCart((prev) => {
-      const nextQty = Math.max(0, Number(prev[key] || 0) + delta);
+      const previousLine = prev[key] || {};
+      const nextQty = Math.max(0, Number(previousLine.qty || 0) + Number(delta || 0));
       const next = { ...prev };
-      if (nextQty <= 0) delete next[key];
-      else next[key] = nextQty;
+      if (nextQty <= 0) {
+        delete next[key];
+      } else {
+        next[key] = {
+          productId,
+          portion: normalizedPortion,
+          qty: nextQty,
+          name: String(item?.name || "").trim() || `Item ${productId}`,
+          unitPrice: resolveMenuItemUnitPrice(item, normalizedPortion),
+        };
+      }
       return next;
     });
   };
@@ -650,7 +766,11 @@ export default function PublicMenu() {
         table_number: formValues.table_number || undefined,
         payment_method: formValues.payment_method || "CASH",
         note: formValues.note || undefined,
-        items: cartLines.map((line) => ({ product_id: line.productId, qty: line.qty })),
+        items: cartLines.map((line) => ({
+          product_id: line.productId,
+          qty: line.qty,
+          portion: line.portion || undefined,
+        })),
       };
 
       const { data } = await publicApi.post("/public/orders", payload);
@@ -741,7 +861,8 @@ export default function PublicMenu() {
               ) : (
                 <div className="cv-public-items-grid">
                   {activeItems.map((item) => {
-                    const qty = Number(cart[String(item.id)] || 0);
+                    const pricing = getMenuItemPortionPrices(item);
+                    const defaultQty = getCartQty(item.id);
                     return (
                       <article key={String(item.id)} className="cv-public-item-card">
                         <div className="cv-public-item-image-wrap">
@@ -762,39 +883,91 @@ export default function PublicMenu() {
                         <div className="cv-public-item-body">
                           <h3>{item.name}</h3>
                           <p>{normalizeCategory(item.category)}</p>
-                          <div className="cv-public-item-footer">
-                            <strong>{toMoney(item.price)}</strong>
-                            {qty <= 0 ? (
-                              <button
-                                type="button"
-                                className="cv-public-add-btn"
-                                onClick={() => changeQty(item.id, 1)}
-                                aria-label={`Add ${item.name}`}
-                              >
-                                Add
-                              </button>
-                            ) : (
-                              <div className="cv-public-qty-box">
+                          {pricing.hasPortions ? (
+                            <div className="cv-public-portion-grid">
+                              {PORTION_OPTIONS.map((portionOption) => {
+                                const portionPrice =
+                                  portionOption === "LARGE"
+                                    ? pricing.largePrice
+                                    : pricing.smallPrice;
+                                const qty = getCartQty(item.id, portionOption);
+                                return (
+                                  <div key={`${item.id}-${portionOption}`} className="cv-public-portion-row">
+                                    <div className="cv-public-portion-meta">
+                                      <span className="cv-public-portion-badge">
+                                        {portionOption === "LARGE" ? "L" : "S"}
+                                      </span>
+                                      <strong>{toMoney(portionPrice)}</strong>
+                                    </div>
+                                    {qty <= 0 ? (
+                                      <button
+                                        type="button"
+                                        className="cv-public-add-btn cv-public-add-btn--portion"
+                                        onClick={() => changeQty(item, 1, portionOption)}
+                                        aria-label={`Add ${getPortionLabel(portionOption)} portion of ${item.name}`}
+                                      >
+                                        Add
+                                      </button>
+                                    ) : (
+                                      <div className="cv-public-qty-box cv-public-qty-box--portion">
+                                        <button
+                                          type="button"
+                                          onClick={() => changeQty(item, -1, portionOption)}
+                                          className="cv-public-qty-btn cv-public-qty-btn--portion"
+                                          aria-label={`Decrease ${getPortionLabel(portionOption)} portion quantity for ${item.name}`}
+                                        >
+                                          -
+                                        </button>
+                                        <span aria-live="polite">{qty}</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => changeQty(item, 1, portionOption)}
+                                          className="cv-public-qty-btn cv-public-qty-btn--portion"
+                                          aria-label={`Increase ${getPortionLabel(portionOption)} portion quantity for ${item.name}`}
+                                        >
+                                          +
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="cv-public-item-footer">
+                              <strong>{toMoney(pricing.basePrice)}</strong>
+                              {defaultQty <= 0 ? (
                                 <button
                                   type="button"
-                                  onClick={() => changeQty(item.id, -1)}
-                                  className="cv-public-qty-btn"
-                                  aria-label={`Decrease quantity for ${item.name}`}
+                                  className="cv-public-add-btn"
+                                  onClick={() => changeQty(item, 1)}
+                                  aria-label={`Add ${item.name}`}
                                 >
-                                  -
+                                  Add
                                 </button>
-                                <span aria-live="polite">{qty}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => changeQty(item.id, 1)}
-                                  className="cv-public-qty-btn"
-                                  aria-label={`Increase quantity for ${item.name}`}
-                                >
-                                  +
-                                </button>
-                              </div>
-                            )}
-                          </div>
+                              ) : (
+                                <div className="cv-public-qty-box">
+                                  <button
+                                    type="button"
+                                    onClick={() => changeQty(item, -1)}
+                                    className="cv-public-qty-btn"
+                                    aria-label={`Decrease quantity for ${item.name}`}
+                                  >
+                                    -
+                                  </button>
+                                  <span aria-live="polite">{defaultQty}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => changeQty(item, 1)}
+                                    className="cv-public-qty-btn"
+                                    aria-label={`Increase quantity for ${item.name}`}
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </article>
                     );
@@ -845,10 +1018,10 @@ export default function PublicMenu() {
                   <>
                     <div className="cv-public-cart-lines">
                       {cartLines.map((line) => (
-                        <div key={`cart-${line.productId}`} className="cv-public-cart-line">
+                        <div key={`cart-${line.cartKey}`} className="cv-public-cart-line">
                           <div>
-                            <strong>{line.item?.name}</strong>
-                            <span>{toMoney(line.item?.price)} each</span>
+                            <strong>{line.displayName}</strong>
+                            <span>{toMoney(line.unitPrice)} each</span>
                           </div>
                           <div>
                             x{line.qty}
