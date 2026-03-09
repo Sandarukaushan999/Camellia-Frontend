@@ -64,11 +64,11 @@ export default function ReceiptPreview({ orderData }) {
       <style>{`
         .receipt-preview-wrapper {
           font-family: 'Courier New', monospace;
-          font-size: 12.5px;
-          line-height: 1.45;
+          font-size: 13px;
+          line-height: 1.5;
           color: #000;
           background: white;
-          padding: 8px;
+          padding: 7px;
           border-radius: 8px;
           width: 100%;
           box-sizing: border-box;
@@ -104,14 +104,14 @@ export default function ReceiptPreview({ orderData }) {
         }
         
         .receipt-preview-header h2 {
-          font-size: 17px;
+          font-size: 18px;
           font-weight: bold;
           margin: 0 0 2px 0;
-          letter-spacing: 0.5px;
+          letter-spacing: 0.3px;
         }
         
         .receipt-preview-header p {
-          font-size: 11px;
+          font-size: 12px;
           margin: 1px 0;
           color: #000;
         }
@@ -123,13 +123,15 @@ export default function ReceiptPreview({ orderData }) {
         
         .receipt-preview-info {
           margin: 4px 0;
-          font-size: 11.5px;
+          font-size: 12.5px;
         }
         
         .receipt-preview-info-row {
           display: flex;
           justify-content: space-between;
-          margin: 2px 0;
+          align-items: baseline;
+          gap: 6px;
+          margin: 1px 0;
         }
         
         .receipt-preview-items {
@@ -143,14 +145,14 @@ export default function ReceiptPreview({ orderData }) {
           margin-bottom: 4px;
           padding-bottom: 2px;
           border-bottom: 1px solid #000;
-          font-size: 11.5px;
+          font-size: 12.5px;
         }
         
         .receipt-preview-item {
           display: flex;
           justify-content: space-between;
           margin: 3px 0;
-          font-size: 11.5px;
+          font-size: 12.5px;
         }
         
         .receipt-preview-item-name {
@@ -172,30 +174,33 @@ export default function ReceiptPreview({ orderData }) {
         
         .receipt-preview-totals {
           margin: 6px 0;
-          font-size: 11.5px;
+          font-size: 12.5px;
         }
         
         .receipt-preview-total-row {
           display: flex;
           justify-content: space-between;
+          align-items: baseline;
+          gap: 6px;
           margin: 2px 0;
         }
         
         .receipt-preview-grand-total {
           border-top: 2px solid #000;
           border-bottom: 2px solid #000;
-          padding: 5px 0;
+          padding: 4px 0;
           margin: 6px 0;
-          font-size: 15px;
+          font-size: 13.5px;
           font-weight: bold;
         }
 
         .receipt-preview-grand-total-label {
-          letter-spacing: 0.4px;
+          letter-spacing: 0.2px;
+          font-size: 13.5px;
         }
 
         .receipt-preview-grand-total-value {
-          font-size: 18px;
+          font-size: 16px;
           line-height: 1;
         }
         
@@ -204,34 +209,34 @@ export default function ReceiptPreview({ orderData }) {
           padding-top: 6px;
           border-top: 1px dashed #666;
           text-align: center;
-          font-size: 10.5px;
+          font-size: 11.5px;
           color: #000;
           line-height: 1.4;
         }
 
         .receipt-preview-footer-title {
-          font-size: 11px;
+          font-size: 11.5px;
           margin-bottom: 2px;
         }
 
         .receipt-preview-footer-domain {
-          font-size: 11px;
+          font-size: 11.5px;
           margin-bottom: 2px;
         }
 
         .receipt-preview-footer-copy {
           margin-bottom: 3px;
-          font-size: 10.5px;
+          font-size: 11.5px;
         }
 
         .receipt-preview-footer-services {
           margin: 1px 0 3px 0;
-          font-size: 10px;
+          font-size: 11px;
         }
 
         .receipt-preview-footer-thanks {
           margin-top: 4px;
-          font-size: 11px;
+          font-size: 12px;
         }
       `}</style>
 

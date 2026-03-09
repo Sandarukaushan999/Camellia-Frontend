@@ -121,11 +121,11 @@ export default function Receipt({ orderData }) {
           width: 80mm;
           max-width: 80mm;
           margin: 0 auto;
-          padding: 6px 7px 5px 7px;
+          padding: 5px 6px 4px 6px;
           background: white;
           font-family: 'Courier New', monospace;
-          font-size: 14px;
-          line-height: 1.45;
+          font-size: 14.5px;
+          line-height: 1.5;
           color: #000;
         }
 
@@ -158,14 +158,14 @@ export default function Receipt({ orderData }) {
         }
         
         .receipt-header h1 {
-          font-size: 22px;
+          font-size: 23px;
           font-weight: bold;
           margin: 0 0 4px 0;
-          letter-spacing: 0.6px;
+          letter-spacing: 0.3px;
         }
         
         .receipt-header p {
-          font-size: 12px;
+          font-size: 13px;
           margin: 2px 0;
           color: #000;
         }
@@ -177,17 +177,25 @@ export default function Receipt({ orderData }) {
         
         .receipt-info {
           margin: 6px 0;
-          font-size: 13px;
+          font-size: 14px;
         }
         
         .receipt-info-row {
           display: flex;
           justify-content: space-between;
-          margin: 3px 0;
+          align-items: baseline;
+          gap: 8px;
+          margin: 2px 0;
         }
         
         .receipt-info-label {
           font-weight: bold;
+          white-space: nowrap;
+        }
+
+        .receipt-info-row span:last-child {
+          text-align: right;
+          word-break: break-word;
         }
         
         .receipt-items {
@@ -201,42 +209,44 @@ export default function Receipt({ orderData }) {
           margin-bottom: 6px;
           padding-bottom: 4px;
           border-bottom: 1px solid #000;
-          font-size: 13px;
+          font-size: 14px;
         }
         
         .receipt-item {
           display: flex;
           justify-content: space-between;
-          margin: 6px 0;
-          font-size: 13px;
+          margin: 4px 0;
+          font-size: 14px;
         }
         
         .receipt-item-name {
           flex: 1;
-          margin-right: 8px;
+          margin-right: 6px;
         }
         
         .receipt-item-qty {
           text-align: center;
-          width: 38px;
-          margin-right: 8px;
+          width: 34px;
+          margin-right: 6px;
         }
         
         .receipt-item-price {
           text-align: right;
-          width: 82px;
+          width: 78px;
           font-weight: bold;
         }
         
         .receipt-totals {
           margin: 8px 0;
-          font-size: 13px;
+          font-size: 14px;
         }
         
         .receipt-total-row {
           display: flex;
           justify-content: space-between;
-          margin: 4px 0;
+          align-items: baseline;
+          gap: 8px;
+          margin: 3px 0;
         }
         
         .receipt-total-label {
@@ -251,24 +261,25 @@ export default function Receipt({ orderData }) {
         .receipt-grand-total {
           border-top: 2px solid #000;
           border-bottom: 2px solid #000;
-          padding: 9px 0;
-          margin: 9px 0;
-          font-size: 17px;
+          padding: 6px 0;
+          margin: 7px 0;
+          font-size: 15px;
           font-weight: bold;
         }
 
         .receipt-grand-total-label {
-          letter-spacing: 0.5px;
+          letter-spacing: 0.25px;
+          font-size: 15px;
         }
 
         .receipt-grand-total-value {
-          font-size: 24px;
+          font-size: 19px;
           line-height: 1;
         }
         
         .receipt-payment {
           margin: 8px 0;
-          font-size: 13px;
+          font-size: 14px;
         }
         
         .receipt-footer {
@@ -276,35 +287,35 @@ export default function Receipt({ orderData }) {
           margin-top: 10px;
           padding-top: 6px;
           border-top: 1px dashed #000;
-          font-size: 12px;
+          font-size: 13px;
           color: #000;
-          line-height: 1.35;
+          line-height: 1.4;
         }
         
         .receipt-footer-title {
-          font-size: 12px;
+          font-size: 13px;
           letter-spacing: 0.4px;
           margin-bottom: 2px;
         }
 
         .receipt-footer-domain {
-          font-size: 12px;
+          font-size: 13px;
           margin-bottom: 2px;
         }
 
         .receipt-footer-copy {
           margin-bottom: 3px;
-          font-size: 12px;
+          font-size: 13px;
         }
 
         .receipt-footer-services {
           margin: 2px 0 4px 0;
-          font-size: 12px;
+          font-size: 13px;
         }
 
         .receipt-footer-thanks {
           margin-top: 3px;
-          font-size: 13px;
+          font-size: 14px;
         }
       `}</style>
 
