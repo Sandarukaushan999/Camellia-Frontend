@@ -3,9 +3,17 @@ import { useSearchParams } from "react-router-dom";
 import api from "../utils/api.js";
 import { adminAPI, triggerDownload } from "../services/adminAPI.js";
 import { formatBusinessTime } from "../utils/timezone.js";
+import {
+  buildCategoryIconMap,
+  loadMenuCategories,
+  normalizeMenuCategories,
+  normalizeMenuCategoryEntry,
+  saveMenuCategories,
+} from "../utils/menuCategories.js";
 
 const SETTINGS_SECTIONS = [
   { id: "shop", label: "Shop & Branch Info", icon: "SI" },
+  { id: "menu", label: "Menu Categories", icon: "MC" },
   { id: "tax", label: "Tax & Service Charges", icon: "TX" },
   { id: "printer", label: "Printer & Devices", icon: "PR" },
   { id: "backup", label: "Backup & Restore", icon: "BK" },
@@ -138,7 +146,63 @@ export default function Settings() {
     };
   });
 
+  const [menuCategories, setMenuCategories] = useState(() => loadMenuCategories());
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryIcon, setNewCategoryIcon] = useState("📦");
+
+  const categoryIconMap = useMemo(
+    () => buildCategoryIconMap(menuCategories),
+    [menuCategories]
+  );
+
   const [backupFile, setBackupFile] = useState(null);
+  const [resetSecretCode, setResetSecretCode] = useState("");
+  const [resetBusy, setResetBusy] = useState(false);
+
+  const updateMenuCategory = (index, patch) => {
+    setMenuCategories((prev) =>
+      prev.map((entry, entryIndex) =>
+        entryIndex === index
+          ? {
+              ...entry,
+              ...patch,
+            }
+          : entry
+      )
+    );
+    setHasChanges(true);
+  };
+
+  const removeMenuCategory = (index) => {
+    setMenuCategories((prev) => prev.filter((_, entryIndex) => entryIndex !== index));
+    setHasChanges(true);
+  };
+
+  const addMenuCategory = () => {
+    const parsed = normalizeMenuCategoryEntry({
+      name: newCategoryName,
+      icon: newCategoryIcon,
+    });
+    if (!parsed) {
+      setMessage("Category name is required and cannot be ALL");
+      setTimeout(() => setMessage(""), 2800);
+      return;
+    }
+
+    const alreadyExists = menuCategories.some(
+      (entry) => String(entry?.name || "").trim().toLowerCase() === parsed.name.toLowerCase()
+    );
+    if (alreadyExists) {
+      setMessage("Category already exists");
+      setTimeout(() => setMessage(""), 2400);
+      return;
+    }
+
+    setMenuCategories((prev) => [...prev, parsed]);
+    setNewCategoryName("");
+    setNewCategoryIcon("📦");
+    setHasChanges(true);
+  };
 
   const handleSave = async () => {
     // Persist shop info so receipts, POS and reports can use them
@@ -171,6 +235,21 @@ export default function Settings() {
       localStorage.setItem("cv_printer_settings_updated_at", String(Date.now()));
     } catch {
       // ignore storage errors
+    }
+
+    const normalizedCategories = normalizeMenuCategories(menuCategories);
+    if (normalizedCategories.length !== menuCategories.length) {
+      setMessage("Fix invalid menu categories before saving");
+      setTimeout(() => setMessage(""), 3000);
+      return;
+    }
+    try {
+      const savedCategories = saveMenuCategories(normalizedCategories);
+      setMenuCategories(savedCategories);
+    } catch {
+      setMessage("Failed to save menu categories");
+      setTimeout(() => setMessage(""), 3000);
+      return;
     }
 
     setMessage("Settings saved successfully");
@@ -208,6 +287,40 @@ export default function Settings() {
     } catch (err) {
       setMessage(err?.response?.data?.message || "Restore failed");
       setTimeout(() => setMessage(""), 3000);
+    }
+  };
+
+  const handleSystemReset = async () => {
+    const secretCode = String(resetSecretCode || "").trim();
+    if (!secretCode) {
+      setMessage("Enter reset secret code");
+      setTimeout(() => setMessage(""), 3000);
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "This will clear business data for a fresh start. User/admin credentials will be kept. Continue?"
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setResetBusy(true);
+    try {
+      const data = await adminAPI.resetSystem(secretCode);
+      const truncatedCount = Array.isArray(data?.truncatedTables)
+        ? data.truncatedTables.length
+        : 0;
+      setMessage(
+        `${data?.message || "System reset completed"} (${truncatedCount} tables cleared)`
+      );
+      setResetSecretCode("");
+      setTimeout(() => setMessage(""), 4500);
+    } catch (err) {
+      setMessage(err?.response?.data?.message || "System reset failed");
+      setTimeout(() => setMessage(""), 4000);
+    } finally {
+      setResetBusy(false);
     }
   };
 
@@ -399,6 +512,104 @@ export default function Settings() {
                       />
                       <span className="text-xs text-gray-500">Used in bills & reports</span>
                     </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Menu Categories */}
+            {activeSection === "menu" && (
+              <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
+                <h2 className="text-lg font-bold text-gray-900 mb-2 flex items-center gap-2">
+                  <span className="cv-mini-icon text-[11px]">MC</span> Menu Categories
+                </h2>
+                <p className="text-sm text-gray-600 mb-5">
+                  Add, edit, or remove POS category chips used in Products and POS billing.
+                </p>
+
+                <div className="space-y-3">
+                  {menuCategories.map((entry, index) => (
+                    <div
+                      key={`${entry.name}-${index}`}
+                      className="grid grid-cols-[68px_1fr_auto] gap-2 items-center"
+                    >
+                      <input
+                        type="text"
+                        value={entry.icon}
+                        onChange={(e) =>
+                          updateMenuCategory(index, {
+                            icon: e.target.value,
+                          })
+                        }
+                        maxLength={2}
+                        className="px-3 py-2 border border-gray-300 rounded-lg text-xl text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        title="Category icon (emoji)"
+                      />
+                      <input
+                        type="text"
+                        value={entry.name}
+                        onChange={(e) =>
+                          updateMenuCategory(index, {
+                            name: e.target.value,
+                          })
+                        }
+                        className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Category name"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeMenuCategory(index)}
+                        className="px-3 py-2 rounded-lg text-sm font-semibold bg-red-100 text-red-700 hover:bg-red-200"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-5 pt-4 border-t border-gray-200">
+                  <div className="text-sm font-semibold text-gray-900 mb-2">Add Category</div>
+                  <div className="grid grid-cols-[68px_1fr_auto] gap-2 items-center">
+                    <input
+                      type="text"
+                      value={newCategoryIcon}
+                      onChange={(e) => setNewCategoryIcon(e.target.value)}
+                      maxLength={2}
+                      className="px-3 py-2 border border-gray-300 rounded-lg text-xl text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      title="Category icon (emoji)"
+                    />
+                    <input
+                      type="text"
+                      value={newCategoryName}
+                      onChange={(e) => setNewCategoryName(e.target.value)}
+                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="e.g. Pasta"
+                    />
+                    <button
+                      type="button"
+                      onClick={addMenuCategory}
+                      className="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700"
+                    >
+                      Add
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-5 pt-4 border-t border-gray-200">
+                  <div className="text-sm font-semibold text-gray-900 mb-2">Preview</div>
+                  <div className="flex flex-wrap gap-2">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-900 text-white px-3 py-1 text-xs font-semibold">
+                      📦 ALL
+                    </span>
+                    {menuCategories.map((entry, index) => (
+                      <span
+                        key={`preview-${entry.name}-${index}`}
+                        className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 text-gray-800 px-3 py-1 text-xs font-semibold border border-gray-200"
+                      >
+                        <span>{categoryIconMap[entry.name] || "📦"}</span>
+                        <span>{entry.name}</span>
+                      </span>
+                    ))}
                   </div>
                 </div>
               </div>
@@ -763,6 +974,36 @@ export default function Settings() {
                     >
                       Restore Backup
                     </button>
+                  </div>
+
+                  <div className="mt-6 pt-5 border-t border-red-200 bg-red-50 rounded-lg p-4">
+                    <div className="text-sm font-semibold text-red-900 mb-1">
+                      System Reset (Fresh Start)
+                    </div>
+                    <div className="text-xs text-red-800 mb-3">
+                      Clears business data and values for a fresh start. User/admin credentials are preserved.
+                    </div>
+                    <div className="flex flex-col md:flex-row gap-2">
+                      <input
+                        type="password"
+                        value={resetSecretCode}
+                        onChange={(e) => setResetSecretCode(e.target.value)}
+                        placeholder="Enter reset secret code"
+                        className="flex-1 px-4 py-2.5 border border-red-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSystemReset}
+                        disabled={resetBusy}
+                        className={`px-5 py-2.5 rounded-lg font-semibold ${
+                          resetBusy
+                            ? "bg-red-300 text-white cursor-not-allowed"
+                            : "bg-red-600 text-white hover:bg-red-700"
+                        }`}
+                      >
+                        {resetBusy ? "Resetting..." : "Reset System"}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>

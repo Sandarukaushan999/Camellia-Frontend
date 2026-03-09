@@ -90,7 +90,7 @@ export default function QRCategory() {
     return () => {
       mounted = false;
     };
-  }, [activeBranchId]);
+  }, []);
 
   const selectedBranch = useMemo(
     () => branches.find((branch) => Number(branch.id) === Number(activeBranchId)) || branches[0] || null,
@@ -111,6 +111,7 @@ export default function QRCategory() {
 
   const menuUrl = useMemo(() => `${normalizedPublicHost}${menuPath}`, [menuPath, normalizedPublicHost]);
   const qrImageUrl = useMemo(() => buildQrImageUrl(menuUrl, 340), [menuUrl]);
+
   const tableMenuLinks = useMemo(() => {
     const start = Math.min(tableStart, tableEnd);
     const end = Math.max(tableStart, tableEnd);
@@ -145,6 +146,7 @@ export default function QRCategory() {
       setMenuPreview({ categories: [], items: [], branch: null });
       return;
     }
+
     let mounted = true;
     const loadPreview = async () => {
       setLoadingPreview(true);
@@ -171,6 +173,7 @@ export default function QRCategory() {
         }
       }
     };
+
     loadPreview();
     return () => {
       mounted = false;
@@ -207,16 +210,25 @@ export default function QRCategory() {
   return (
     <div className="cv-page cv-page--qr p-4 md:p-6">
       <div className="mx-auto max-w-7xl space-y-6">
-        <div className="cv-page-header flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div>
-            <h1 className="cv-page-title text-2xl font-bold text-gray-900">QR Category</h1>
-            <p className="cv-page-subtitle text-sm text-gray-600 mt-1">
-              Stable QR code for customers. Menu updates live whenever products and prices change.
-            </p>
-          </div>
-          <div className="inline-flex items-center gap-2 rounded-full border border-lime-300 bg-lime-50 px-3 py-1 text-xs font-semibold text-lime-800">
-            <i className="fi-rr-qrcode" aria-hidden="true" />
-            Stable QR, dynamic menu content
+        <div className="cv-page-header rounded-2xl border border-gray-200 bg-white p-4 shadow-sm md:p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <h1 className="cv-page-title text-2xl font-bold text-gray-900">QR Menu Settings</h1>
+              <p className="cv-page-subtitle mt-1 text-sm text-gray-600">
+                Configure one stable QR link for customers. Menu updates automatically when products or prices change.
+              </p>
+            </div>
+            <div className="grid gap-2 text-xs text-gray-700 sm:grid-cols-3">
+              <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 font-semibold">
+                1. Scan QR
+              </div>
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 font-semibold">
+                2. Browse + Add Items
+              </div>
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 font-semibold">
+                3. Register + Place Order
+              </div>
+            </div>
           </div>
         </div>
 
@@ -263,9 +275,7 @@ export default function QRCategory() {
             </div>
 
             <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
-              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Table QR Setup
-              </div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Table QR Setup</div>
               <div className="mt-3 grid grid-cols-3 gap-2">
                 <label className="text-[11px] font-semibold uppercase tracking-wide text-gray-600">
                   Prefix
@@ -301,11 +311,11 @@ export default function QRCategory() {
                 </label>
               </div>
               <p className="mt-2 text-xs text-gray-500">
-                Generates one QR per table. Auto table detection works via `?table=`.
+                One QR per table. Table is auto-detected in menu via `?table=`.
               </p>
             </div>
 
-            <div className="mt-4 grid grid-cols-2 gap-2">
+            <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
               <button
                 type="button"
                 onClick={copyMenuUrl}
@@ -319,7 +329,7 @@ export default function QRCategory() {
                 rel="noreferrer"
                 className="cv-acid-btn-soft rounded-lg px-3 py-2 text-center text-sm font-semibold"
               >
-                Open Menu
+                Open Mobile Menu
               </a>
             </div>
 
@@ -337,13 +347,13 @@ export default function QRCategory() {
           <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="text-base font-semibold text-gray-900">Menu Preview</h2>
+                <h2 className="text-base font-semibold text-gray-900">Live Menu Preview</h2>
                 <p className="text-xs text-gray-500">
                   Branch: {menuPreview.branch?.code || selectedBranch?.code || "-"} -{" "}
                   {menuPreview.branch?.name || selectedBranch?.name || "-"}
                 </p>
               </div>
-              <div className="flex gap-2 text-xs">
+              <div className="flex flex-wrap gap-2 text-xs">
                 <span className="rounded-full bg-blue-50 px-3 py-1 font-semibold text-blue-700">
                   {totalCategories} categories
                 </span>
@@ -387,17 +397,12 @@ export default function QRCategory() {
 
             <div className="mt-5 rounded-xl border border-gray-200 p-3">
               <div className="mb-3 flex items-center justify-between gap-3">
-                <h3 className="text-sm font-bold text-gray-900">Table QR Codes</h3>
-                <span className="text-xs font-semibold text-gray-500">
-                  Up to 100 cards per range
-                </span>
+                <h3 className="text-sm font-bold text-gray-900">Table QR Cards</h3>
+                <span className="text-xs font-semibold text-gray-500">Up to 100 cards per range</span>
               </div>
               <div className="cv-qr-table-grid grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {tableMenuLinks.map((entry) => (
-                  <article
-                    key={entry.tableLabel}
-                    className="rounded-xl border border-gray-200 bg-gray-50 p-3"
-                  >
+                  <article key={entry.tableLabel} className="rounded-xl border border-gray-200 bg-gray-50 p-3">
                     <div className="text-sm font-extrabold text-gray-900">Table {entry.tableLabel}</div>
                     <div className="mt-2 flex justify-center rounded-lg border border-gray-200 bg-white p-2">
                       <img
@@ -406,9 +411,7 @@ export default function QRCategory() {
                         className="h-[120px] w-[120px] object-contain"
                       />
                     </div>
-                    <div className="mt-2 truncate text-[11px] font-medium text-gray-600">
-                      {entry.tableUrl}
-                    </div>
+                    <div className="mt-2 truncate text-[11px] font-medium text-gray-600">{entry.tableUrl}</div>
                     <div className="mt-2 flex gap-2">
                       <button
                         type="button"
@@ -442,3 +445,4 @@ export default function QRCategory() {
     </div>
   );
 }
+

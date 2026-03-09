@@ -5,31 +5,13 @@ import ReceiptPreview from "../components/ReceiptPreview.jsx";
 import { useAuth } from "../state/AuthContext.jsx";
 import { getActiveBranchId, onActiveBranchChange } from "../utils/branchContext.js";
 import { formatBusinessDateTime, formatBusinessTime } from "../utils/timezone.js";
-
-const CATEGORY_ICONS = {
-  ALL: "📦",
-  Burger: "🍔",
-  Kottu: "🍜",
-  Noodles: "🍝",
-  Noodle: "🍝",
-  Submarine: "🥖",
-  Café: "☕",
-  Juice: "🥤",
-  Rice: "🍚",
-  Pizza: "🍕",
-};
-
-const DEFAULT_CATEGORIES = [
-  "ALL",
-  "Burger",
-  "Kottu",
-  "Noodles",
-  "Submarine",
-  "Café",
-  "Juice",
-  "Rice",
-  "Pizza",
-];
+import {
+  buildCategoryIconMap,
+  getMenuCategoryNames,
+  loadMenuCategories,
+  MENU_CATEGORIES_STORAGE_KEY,
+  MENU_CATEGORIES_UPDATED_AT_KEY,
+} from "../utils/menuCategories.js";
 
 
 const DEFAULT_PRINTER_SETTINGS = {
@@ -48,6 +30,7 @@ const XP_80T_PRINT_PROFILE = {
   charsPerLine: 42,
 };
 const PORTION_OPTIONS = Object.freeze(["SMALL", "LARGE"]);
+const DEFAULT_PORTION_MODE = "SMALL";
 const POS_RECALL_STORAGE_KEY = "cv_pos_recall_held_order";
 const DEFAULT_SETTLEMENT_CONTEXT = {
   heldOrderId: null,
@@ -167,12 +150,10 @@ function resolveDirectPrinterConfig(settings) {
 export default function POS() {
   const { user } = useAuth();
   const [activeBranchId, setActiveBranchId] = useState(() => getActiveBranchId(null));
+  const [menuCategories, setMenuCategories] = useState(() => loadMenuCategories());
+  const [selectedPortionMode, setSelectedPortionMode] = useState(DEFAULT_PORTION_MODE);
   const [products, setProducts] = useState([]);
   const [cart, setCart] = useState([]);
-  const [portionPicker, setPortionPicker] = useState({
-    open: false,
-    product: null,
-  });
   const [selectedCategory, setSelectedCategory] = useState("ALL");
   const [orderType, setOrderType] = useState("DINE-IN");
   const [tableNumber, setTableNumber] = useState("");
@@ -338,14 +319,49 @@ export default function POS() {
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
+  useEffect(() => {
+    const refreshMenuCategories = () => {
+      setMenuCategories(loadMenuCategories());
+    };
+
+    refreshMenuCategories();
+
+    const onStorage = (event) => {
+      if (
+        event.key === MENU_CATEGORIES_UPDATED_AT_KEY ||
+        event.key === MENU_CATEGORIES_STORAGE_KEY
+      ) {
+        refreshMenuCategories();
+      }
+    };
+
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  const categoryIconMap = useMemo(
+    () => buildCategoryIconMap(menuCategories),
+    [menuCategories]
+  );
+
   const categories = useMemo(() => {
+    const configuredCategories = getMenuCategoryNames(menuCategories);
     const productCategories = Array.isArray(products)
       ? [...new Set(products.map((p) => String(p.category || "").trim()).filter(Boolean))]
       : [];
-    const defaults = DEFAULT_CATEGORIES.filter((c) => c !== "ALL");
-    const extras = productCategories.filter((c) => !defaults.includes(c));
-    return ["ALL", ...defaults, ...extras];
-  }, [products]);
+    const merged = [...configuredCategories];
+
+    productCategories.forEach((category) => {
+      const exists = merged.some(
+        (entry) => String(entry || "").toLowerCase() === category.toLowerCase()
+      );
+      if (!exists) {
+        merged.push(category);
+      }
+    });
+
+    return ["ALL", ...merged];
+  }, [menuCategories, products]);
 
   const filteredProducts = useMemo(() => {
     if (!Array.isArray(products)) {
@@ -503,13 +519,6 @@ export default function POS() {
     };
   };
 
-  const closePortionPicker = () => {
-    setPortionPicker({
-      open: false,
-      product: null,
-    });
-  };
-
   const addToCart = (product, { portion = null } = {}) => {
     const cartItem = buildCartItem(product, portion);
     setCart((prev) => {
@@ -528,11 +537,7 @@ export default function POS() {
 
   const handleProductTap = (product) => {
     if (hasPortionPrices(product)) {
-      // Fallback: card tap can still open the portion picker if S/L buttons are missed.
-      setPortionPicker({
-        open: true,
-        product,
-      });
+      addToCart(product, { portion: selectedPortionMode });
       return;
     }
     addToCart(product);
@@ -1146,7 +1151,7 @@ export default function POS() {
     <div className="cv-page cv-page--pos h-full min-h-full flex flex-col">
       {/* Header - Order Type Selector */}
       <div className="cv-pos-order-mode bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-sm mb-3">
-        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-3 flex-wrap">
               <div className={`flex gap-2 w-full sm:flex-1 ${systemPrefs.touchMode ? "space-x-2" : ""}`}>
             {["DINE-IN", "TAKEAWAY", "DELIVERY"].map((type) => (
                 <button
@@ -1161,6 +1166,31 @@ export default function POS() {
                 {type.replace("-", " ")}
               </button>
             ))}
+          </div>
+          <div className="flex items-center gap-1.5 px-2 py-1.5 border border-gray-300 rounded-lg bg-gray-50">
+            <span className="text-[11px] font-semibold text-gray-600 px-1">PORTION</span>
+            <button
+              type="button"
+              onClick={() => setSelectedPortionMode("SMALL")}
+              className={`px-2.5 py-1.5 rounded-md text-xs font-bold transition-colors ${
+                selectedPortionMode === "SMALL"
+                  ? "bg-blue-600 text-white"
+                  : "bg-white text-blue-700 border border-blue-200 hover:bg-blue-50"
+              }`}
+            >
+              S
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedPortionMode("LARGE")}
+              className={`px-2.5 py-1.5 rounded-md text-xs font-bold transition-colors ${
+                selectedPortionMode === "LARGE"
+                  ? "bg-emerald-600 text-white"
+                  : "bg-white text-emerald-700 border border-emerald-200 hover:bg-emerald-50"
+              }`}
+            >
+              L
+            </button>
           </div>
           {orderType === "DINE-IN" && (
             <input
@@ -1196,7 +1226,7 @@ export default function POS() {
           <div className="cv-pos-category-bar bg-gradient-to-r from-gray-50 to-gray-100 border-b-2 border-gray-300 px-4 py-3 overflow-x-auto shadow-sm">
             <div className="flex gap-3 min-w-max">
               {categories.map((cat) => {
-                const icon = CATEGORY_ICONS[cat] || "📦";
+                const icon = categoryIconMap[cat] || "📦";
                 const isActive = selectedCategory === cat;
                 return (
                   <button
@@ -1238,46 +1268,27 @@ export default function POS() {
                         />
                       ) : (
                         <div className="h-20 flex items-center justify-center text-3xl">
-                          {CATEGORY_ICONS[product.category] || "📦"}
+                          {categoryIconMap[product.category] || "📦"}
                         </div>
                       )}
                     </div>
                     <div className="font-semibold text-sm text-gray-900 mb-1 line-clamp-2">
                       {product.name}
                     </div>
-                    {hasPortionPrices(product) ? (
-                      <div className="mt-1">
-                        <div className="mb-1 text-[10px] font-black tracking-wide text-gray-700">
-                          SELECT PORTION
-                        </div>
-                        <div className="grid grid-cols-2 gap-1.5">
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            addToCart(product, { portion: "SMALL" });
-                          }}
-                          className="rounded-md border-2 border-blue-400 bg-blue-50 px-2 py-2 text-xs font-black text-blue-900 hover:bg-blue-100"
-                        >
-                          S {formatCurrency(resolvePortionPrice(product, "SMALL"))}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            addToCart(product, { portion: "LARGE" });
-                          }}
-                          className="rounded-md border-2 border-emerald-400 bg-emerald-50 px-2 py-2 text-xs font-black text-emerald-900 hover:bg-emerald-100"
-                        >
-                          L {formatCurrency(resolvePortionPrice(product, "LARGE"))}
-                        </button>
-                        </div>
-                      </div>
-                    ) : (
+                    <div className="mt-1">
                       <div className="text-base font-bold text-blue-600">
-                        {formatCurrency(product.price)}
+                        {formatCurrency(
+                          hasPortionPrices(product)
+                            ? resolvePortionPrice(product, selectedPortionMode)
+                            : product.price
+                        )}
                       </div>
-                    )}
+                      {hasPortionPrices(product) && (
+                        <div className="text-[10px] font-black tracking-wide text-gray-700">
+                          {selectedPortionMode === "LARGE" ? "LARGE PORTION" : "SMALL PORTION"}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -1513,59 +1524,6 @@ export default function POS() {
                 className="px-4 py-2 bg-gray-700 text-white rounded-lg text-sm font-semibold hover:bg-gray-800"
               >
                 Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {portionPicker.open && portionPicker.product && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl border border-gray-200 p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-lg font-bold text-gray-900">
-                  Select Portion
-                </div>
-                <div className="text-sm text-gray-600 mt-1">
-                  {portionPicker.product.name}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={closePortionPicker}
-                className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
-              >
-                {"\u00D7"}
-              </button>
-            </div>
-
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  addToCart(portionPicker.product, { portion: "SMALL" });
-                  closePortionPicker();
-                }}
-                className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-4 text-left hover:bg-blue-100 transition-colors"
-              >
-                <div className="text-sm font-semibold text-blue-900">Small</div>
-                <div className="text-base font-bold text-blue-700 mt-1">
-                  {formatCurrency(resolvePortionPrice(portionPicker.product, "SMALL"))}
-                </div>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  addToCart(portionPicker.product, { portion: "LARGE" });
-                  closePortionPicker();
-                }}
-                className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-4 text-left hover:bg-emerald-100 transition-colors"
-              >
-                <div className="text-sm font-semibold text-emerald-900">Large</div>
-                <div className="text-base font-bold text-emerald-700 mt-1">
-                  {formatCurrency(resolvePortionPrice(portionPicker.product, "LARGE"))}
-                </div>
               </button>
             </div>
           </div>

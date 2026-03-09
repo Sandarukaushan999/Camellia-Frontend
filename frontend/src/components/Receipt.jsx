@@ -121,11 +121,11 @@ export default function Receipt({ orderData }) {
           width: 80mm;
           max-width: 80mm;
           margin: 0 auto;
-          padding: 8px 8px 6px 8px;
+          padding: 6px 7px 5px 7px;
           background: white;
           font-family: 'Courier New', monospace;
-          font-size: 13px;
-          line-height: 1.5;
+          font-size: 14px;
+          line-height: 1.45;
           color: #000;
         }
 
@@ -144,7 +144,7 @@ export default function Receipt({ orderData }) {
         }
         
         .receipt-logo img {
-          max-width: 150px;
+          max-width: 140px;
           height: auto;
           margin-bottom: 2px;
           display: block;
@@ -158,10 +158,10 @@ export default function Receipt({ orderData }) {
         }
         
         .receipt-header h1 {
-          font-size: 20px;
+          font-size: 22px;
           font-weight: bold;
           margin: 0 0 4px 0;
-          letter-spacing: 1px;
+          letter-spacing: 0.6px;
         }
         
         .receipt-header p {
@@ -177,7 +177,7 @@ export default function Receipt({ orderData }) {
         
         .receipt-info {
           margin: 6px 0;
-          font-size: 12px;
+          font-size: 13px;
         }
         
         .receipt-info-row {
@@ -201,14 +201,14 @@ export default function Receipt({ orderData }) {
           margin-bottom: 6px;
           padding-bottom: 4px;
           border-bottom: 1px solid #000;
-          font-size: 12px;
+          font-size: 13px;
         }
         
         .receipt-item {
           display: flex;
           justify-content: space-between;
           margin: 6px 0;
-          font-size: 12px;
+          font-size: 13px;
         }
         
         .receipt-item-name {
@@ -218,19 +218,19 @@ export default function Receipt({ orderData }) {
         
         .receipt-item-qty {
           text-align: center;
-          width: 34px;
+          width: 38px;
           margin-right: 8px;
         }
         
         .receipt-item-price {
           text-align: right;
-          width: 78px;
+          width: 82px;
           font-weight: bold;
         }
         
         .receipt-totals {
           margin: 8px 0;
-          font-size: 12px;
+          font-size: 13px;
         }
         
         .receipt-total-row {
@@ -251,25 +251,34 @@ export default function Receipt({ orderData }) {
         .receipt-grand-total {
           border-top: 2px solid #000;
           border-bottom: 2px solid #000;
-          padding: 8px 0;
-          margin: 8px 0;
-          font-size: 16px;
+          padding: 9px 0;
+          margin: 9px 0;
+          font-size: 17px;
           font-weight: bold;
+        }
+
+        .receipt-grand-total-label {
+          letter-spacing: 0.5px;
+        }
+
+        .receipt-grand-total-value {
+          font-size: 24px;
+          line-height: 1;
         }
         
         .receipt-payment {
           margin: 8px 0;
-          font-size: 12px;
+          font-size: 13px;
         }
         
         .receipt-footer {
           text-align: center;
-          margin-top: 14px;
-          padding-top: 8px;
+          margin-top: 10px;
+          padding-top: 6px;
           border-top: 1px dashed #000;
-          font-size: 11px;
+          font-size: 12px;
           color: #000;
-          line-height: 1.4;
+          line-height: 1.35;
         }
         
         .receipt-footer-title {
@@ -284,24 +293,18 @@ export default function Receipt({ orderData }) {
         }
 
         .receipt-footer-copy {
-          margin-bottom: 4px;
-          font-size: 11.5px;
+          margin-bottom: 3px;
+          font-size: 12px;
         }
 
         .receipt-footer-services {
-          margin: 2px 0;
-          font-size: 11px;
-        }
-
-        .receipt-footer-contact-title {
-          margin-top: 5px;
-          margin-bottom: 2px;
-          font-size: 11.5px;
+          margin: 2px 0 4px 0;
+          font-size: 12px;
         }
 
         .receipt-footer-thanks {
-          margin-top: 5px;
-          font-size: 12px;
+          margin-top: 3px;
+          font-size: 13px;
         }
       `}</style>
 
@@ -441,8 +444,8 @@ export default function Receipt({ orderData }) {
 
         <div className="receipt-grand-total">
           <div className="receipt-total-row">
-            <span>TOTAL (LKR)</span>
-            <span>{formatCurrency(total)}</span>
+            <span className="receipt-grand-total-label">TOTAL (LKR)</span>
+            <span className="receipt-grand-total-value">{formatCurrency(total)}</span>
           </div>
         </div>
 
@@ -476,8 +479,6 @@ export default function Receipt({ orderData }) {
           <div className="receipt-footer-domain">VOXOsolutions.com</div>
           <div className="receipt-footer-copy">(c) 2026 All rights reserved.</div>
           <div className="receipt-footer-services">ERP / POS / WEBSITE / SOFTWARE SOLUTIONS</div>
-          <div className="receipt-footer-services">AI-ML Solutions / IoT Solutions</div>
-          <div className="receipt-footer-contact-title">PLEASE contact WhatsApp or Call</div>
           <div>0710901871</div>
           <div>voxosolution@gmail.com</div>
           <div className="receipt-footer-thanks">Thank you for visiting!</div>
@@ -486,5 +487,4 @@ export default function Receipt({ orderData }) {
     </div>
   );
 }
-
 

@@ -1,28 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import api from "../utils/api.js";
 import { getActiveBranchId, onActiveBranchChange } from "../utils/branchContext.js";
-
-const CATEGORIES = [
-  "Rice",
-  "Kottu",
-  "Noodles",
-  "Burger",
-  "Submarine",
-  "Juice",
-  "Caf\u00E9",
-  "Pizza",
-];
-
-const CATEGORY_ICONS = {
-  Rice: "\u{1F35A}",
-  Kottu: "\u{1F35C}",
-  Noodles: "\u{1F35D}",
-  Burger: "\u{1F354}",
-  Submarine: "\u{1F956}",
-  Juice: "\u{1F964}",
-  "Caf\u00E9": "\u2615",
-  Pizza: "\u{1F355}",
-};
+import {
+  buildCategoryIconMap,
+  getMenuCategoryNames,
+  loadMenuCategories,
+  MENU_CATEGORIES_STORAGE_KEY,
+  MENU_CATEGORIES_UPDATED_AT_KEY,
+} from "../utils/menuCategories.js";
 
 const MAX_UPLOAD_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 const MAX_IMAGE_DATA_URL_LENGTH = 750_000;
@@ -78,6 +63,7 @@ export default function Products() {
   const [inventoryItems, setInventoryItems] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("ALL");
+  const [menuCategories, setMenuCategories] = useState(() => loadMenuCategories());
   const [showModal, setShowModal] = useState(false);
   const [showIngredientsModal, setShowIngredientsModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
@@ -114,6 +100,11 @@ export default function Products() {
   const [imageUploadBusy, setImageUploadBusy] = useState(false);
   const [message, setMessage] = useState("");
 
+  const categoryIconMap = useMemo(
+    () => buildCategoryIconMap(menuCategories),
+    [menuCategories]
+  );
+
   useEffect(() => {
     loadProducts();
     loadInventoryItems();
@@ -133,6 +124,25 @@ export default function Products() {
   }, []);
 
   useEffect(() => onActiveBranchChange((nextBranchId) => setActiveBranchId(nextBranchId)), []);
+
+  useEffect(() => {
+    const refreshMenuCategories = () => {
+      setMenuCategories(loadMenuCategories());
+    };
+    refreshMenuCategories();
+
+    const onStorage = (event) => {
+      if (
+        event.key === MENU_CATEGORIES_UPDATED_AT_KEY ||
+        event.key === MENU_CATEGORIES_STORAGE_KEY
+      ) {
+        refreshMenuCategories();
+      }
+    };
+
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
 
   const loadInventoryItems = async () => {
     try {
@@ -162,6 +172,28 @@ export default function Products() {
     }
   };
 
+  const categoryOptions = useMemo(() => {
+    const configured = getMenuCategoryNames(menuCategories);
+    const merged = [...configured];
+    const appendUnique = (value) => {
+      const normalized = String(value || "").trim();
+      if (!normalized) {
+        return;
+      }
+      const exists = merged.some(
+        (entry) => String(entry || "").toLowerCase() === normalized.toLowerCase()
+      );
+      if (!exists) {
+        merged.push(normalized);
+      }
+    };
+
+    products.forEach((product) => appendUnique(product?.category));
+    appendUnique(form.category);
+
+    return merged;
+  }, [menuCategories, products, form.category]);
+
   // Filter products
   const filteredProducts = useMemo(() => {
     let filtered = products;
@@ -183,6 +215,17 @@ export default function Products() {
 
     return filtered;
   }, [products, selectedCategory, searchTerm]);
+
+  useEffect(() => {
+    if (
+      selectedCategory !== "ALL" &&
+      !categoryOptions.some(
+        (entry) => String(entry || "").toLowerCase() === String(selectedCategory || "").toLowerCase()
+      )
+    ) {
+      setSelectedCategory("ALL");
+    }
+  }, [categoryOptions, selectedCategory]);
 
   // Open modal for new product
   const openAddModal = async () => {
@@ -960,7 +1003,7 @@ export default function Products() {
                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="ALL">All Categories</option>
-                {CATEGORIES.map((cat) => (
+                {categoryOptions.map((cat) => (
                   <option key={cat} value={cat}>
                     {cat}
                   </option>
@@ -1019,7 +1062,7 @@ export default function Products() {
                                 loading="lazy"
                               />
                             ) : (
-                              CATEGORY_ICONS[product.category] || "\u{1F4E6}"
+                              categoryIconMap[product.category] || "\u{1F4E6}"
                             )}
                           </div>
                           <div>
@@ -1221,9 +1264,9 @@ export default function Products() {
                       required
                     >
                       <option value="">Select Category</option>
-                      {CATEGORIES.map((cat) => (
+                      {categoryOptions.map((cat) => (
                         <option key={cat} value={cat}>
-                          {CATEGORY_ICONS[cat]} {cat}
+                          {categoryIconMap[cat] || "\u{1F4E6}"} {cat}
                         </option>
                       ))}
                     </select>
@@ -1242,7 +1285,7 @@ export default function Products() {
                             className="h-full w-full object-cover"
                           />
                         ) : (
-                          CATEGORY_ICONS[form.category] || "\u{1F4E6}"
+                          categoryIconMap[form.category] || "\u{1F4E6}"
                         )}
                       </div>
                       <div className="flex-1 space-y-2">

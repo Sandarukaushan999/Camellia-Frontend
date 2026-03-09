@@ -64,8 +64,8 @@ export default function ReceiptPreview({ orderData }) {
       <style>{`
         .receipt-preview-wrapper {
           font-family: 'Courier New', monospace;
-          font-size: 12px;
-          line-height: 1.5;
+          font-size: 12.5px;
+          line-height: 1.45;
           color: #000;
           background: white;
           padding: 8px;
@@ -104,7 +104,7 @@ export default function ReceiptPreview({ orderData }) {
         }
         
         .receipt-preview-header h2 {
-          font-size: 16px;
+          font-size: 17px;
           font-weight: bold;
           margin: 0 0 2px 0;
           letter-spacing: 0.5px;
@@ -123,7 +123,7 @@ export default function ReceiptPreview({ orderData }) {
         
         .receipt-preview-info {
           margin: 4px 0;
-          font-size: 11px;
+          font-size: 11.5px;
         }
         
         .receipt-preview-info-row {
@@ -143,14 +143,14 @@ export default function ReceiptPreview({ orderData }) {
           margin-bottom: 4px;
           padding-bottom: 2px;
           border-bottom: 1px solid #000;
-          font-size: 11px;
+          font-size: 11.5px;
         }
         
         .receipt-preview-item {
           display: flex;
           justify-content: space-between;
           margin: 3px 0;
-          font-size: 11px;
+          font-size: 11.5px;
         }
         
         .receipt-preview-item-name {
@@ -160,19 +160,19 @@ export default function ReceiptPreview({ orderData }) {
         
         .receipt-preview-item-qty {
           text-align: center;
-          width: 28px;
+          width: 30px;
           margin-right: 6px;
         }
         
         .receipt-preview-item-price {
           text-align: right;
-          width: 70px;
+          width: 72px;
           font-weight: bold;
         }
         
         .receipt-preview-totals {
           margin: 6px 0;
-          font-size: 11px;
+          font-size: 11.5px;
         }
         
         .receipt-preview-total-row {
@@ -186,8 +186,17 @@ export default function ReceiptPreview({ orderData }) {
           border-bottom: 2px solid #000;
           padding: 5px 0;
           margin: 6px 0;
-          font-size: 14px;
+          font-size: 15px;
           font-weight: bold;
+        }
+
+        .receipt-preview-grand-total-label {
+          letter-spacing: 0.4px;
+        }
+
+        .receipt-preview-grand-total-value {
+          font-size: 18px;
+          line-height: 1;
         }
         
         .receipt-preview-footer {
@@ -195,7 +204,7 @@ export default function ReceiptPreview({ orderData }) {
           padding-top: 6px;
           border-top: 1px dashed #666;
           text-align: center;
-          font-size: 10px;
+          font-size: 10.5px;
           color: #000;
           line-height: 1.4;
         }
@@ -216,13 +225,7 @@ export default function ReceiptPreview({ orderData }) {
         }
 
         .receipt-preview-footer-services {
-          margin: 1px 0;
-          font-size: 9.5px;
-        }
-
-        .receipt-preview-footer-contact-title {
-          margin-top: 4px;
-          margin-bottom: 1px;
+          margin: 1px 0 3px 0;
           font-size: 10px;
         }
 
@@ -332,8 +335,8 @@ export default function ReceiptPreview({ orderData }) {
 
         <div className="receipt-preview-grand-total">
           <div className="receipt-preview-total-row">
-            <span>TOTAL (LKR)</span>
-            <span>{formatCurrency(total)}</span>
+            <span className="receipt-preview-grand-total-label">TOTAL (LKR)</span>
+            <span className="receipt-preview-grand-total-value">{formatCurrency(total)}</span>
           </div>
         </div>
 
@@ -345,8 +348,6 @@ export default function ReceiptPreview({ orderData }) {
           <div className="receipt-preview-footer-domain">VOXOsolutions.com</div>
           <div className="receipt-preview-footer-copy">(c) 2026 All rights reserved.</div>
           <div className="receipt-preview-footer-services">ERP / POS / WEBSITE / SOFTWARE SOLUTIONS</div>
-          <div className="receipt-preview-footer-services">AI-ML Solutions / IoT Solutions</div>
-          <div className="receipt-preview-footer-contact-title">PLEASE contact WhatsApp or Call</div>
           <div>0710901871</div>
           <div>voxosolution@gmail.com</div>
           <div className="receipt-preview-footer-thanks">Thank you for visiting!</div>
