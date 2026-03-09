@@ -481,8 +481,6 @@ export default function Receipt({ orderData }) {
           <div>0710901871</div>
           <div>voxosolution@gmail.com</div>
           <div className="receipt-footer-thanks">Thank you for visiting!</div>
-          <div className="receipt-footer-thanks">Thank you for visiting!</div>
-          <div className="receipt-footer-thanks">Thank you for visiting!</div>
         </div>
       </div>
     </div>
