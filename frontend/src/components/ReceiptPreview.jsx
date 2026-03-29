@@ -223,21 +223,6 @@ export default function ReceiptPreview({ orderData }) {
           font-size: 11.5px;
           margin-bottom: 2px;
         }
-
-        .receipt-preview-footer-copy {
-          margin-bottom: 3px;
-          font-size: 11.5px;
-        }
-
-        .receipt-preview-footer-services {
-          margin: 1px 0 3px 0;
-          font-size: 11px;
-        }
-
-        .receipt-preview-footer-thanks {
-          margin-top: 4px;
-          font-size: 12px;
-        }
       `}</style>
 
       <div className="receipt-preview-wrapper">
@@ -351,13 +336,10 @@ export default function ReceiptPreview({ orderData }) {
         <div className="receipt-preview-footer">
           <div className="receipt-preview-footer-title">System Design & Powered By</div>
           <div className="receipt-preview-footer-domain">VOXOsolutions.com</div>
-          <div className="receipt-preview-footer-copy">(c) 2026 All rights reserved.</div>
-          <div className="receipt-preview-footer-services">ERP / POS / WEBSITE / SOFTWARE SOLUTIONS</div>
           <div>0710901871</div>
-          <div>voxosolution@gmail.com</div>
-          <div className="receipt-preview-footer-thanks">Thank you for visiting!</div>
         </div>
       </div>
     </>
   );
 }
+

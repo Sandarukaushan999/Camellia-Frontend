@@ -303,20 +303,6 @@ export default function Receipt({ orderData }) {
           margin-bottom: 2px;
         }
 
-        .receipt-footer-copy {
-          margin-bottom: 3px;
-          font-size: 13px;
-        }
-
-        .receipt-footer-services {
-          margin: 2px 0 4px 0;
-          font-size: 13px;
-        }
-
-        .receipt-footer-thanks {
-          margin-top: 3px;
-          font-size: 14px;
-        }
       `}</style>
 
       <div className="receipt-container">
@@ -488,11 +474,7 @@ export default function Receipt({ orderData }) {
         <div className="receipt-footer">
           <div className="receipt-footer-title">System Design & Powered By</div>
           <div className="receipt-footer-domain">VOXOsolutions.com</div>
-          <div className="receipt-footer-copy">(c) 2026 All rights reserved.</div>
-          <div className="receipt-footer-services">ERP / POS / WEBSITE / SOFTWARE SOLUTIONS</div>
           <div>0710901871</div>
-          <div>voxosolution@gmail.com</div>
-          <div className="receipt-footer-thanks">Thank you for visiting!</div>
         </div>
       </div>
     </div>
