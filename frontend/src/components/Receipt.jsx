@@ -250,11 +250,6 @@ export default function Receipt({ orderData }) {
           color: #555;
           line-height: 1.6;
         }
-        
-        .receipt-footer-copyright {
-          font-weight: bold;
-          margin-top: 8px;
-        }
       `}</style>
 
       <div className="receipt-container">
@@ -424,17 +419,15 @@ export default function Receipt({ orderData }) {
 
         {/* Footer */}
         <div className="receipt-footer">
-          <div>(c) 2025 VOXOsolution</div>
-          <div>voxosolution@gmail.com</div>
-          <div>071 090 1871</div>
-        </div>
-
-        <div style={{ textAlign: "center", marginTop: "10px", fontSize: "10px", color: "#999" }}>
-          Thank you for visiting!
+          <div>System Design & Powered By</div>
+          <div>VOXOsolutions.com</div>
+          <div>0710901871</div>
         </div>
       </div>
     </div>
   );
 }
+
+
 
 

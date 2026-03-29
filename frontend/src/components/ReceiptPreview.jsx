@@ -305,13 +305,15 @@ export default function ReceiptPreview({ orderData }) {
 
         {/* Footer */}
         <div className="receipt-preview-footer">
-          <div>(c) 2025 VOXOsolution</div>
-          <div>voxosolution@gmail.com</div>
-          <div>071 090 1871</div>
+          <div>System Design & Powered By</div>
+          <div>VOXOsolutions.com</div>
+          <div>0710901871</div>
         </div>
       </div>
     </>
   );
 }
+
+
 
 
